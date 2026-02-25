@@ -1,0 +1,16 @@
+name: Validate Packs
+on: [push, pull_request]
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install me
+        run: |
+          curl -fsSL "https://github.com/memoryengine/me/releases/latest/download/me-linux-x64" \
+            -o /usr/local/bin/me
+          chmod +x /usr/local/bin/me
+      - name: Install yq
+        uses: mikefarah/yq-action@master
+      - name: Validate packs
+        run: ./scripts/validate.sh
