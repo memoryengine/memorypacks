@@ -7,7 +7,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install me
         run: |
-          curl -fsSL "https://github.com/memoryengine/me/releases/latest/download/me-linux-x64" \
+          curl -fsSL "https://install.memory.build/releases/latest/me-linux-x64" \
             -o /usr/local/bin/me
           chmod +x /usr/local/bin/me
       - name: Install yq
