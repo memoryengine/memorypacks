@@ -1,9 +1,9 @@
 # Pack: pack-authoring
 # Version: 0.1.0
 # Description: Teaches agents and humans how to write effective memory packs.
-# ID prefix: 019b0200
+# ID prefix: 019b0001
 
-- id: "019b0200-0001-7000-8000-000000000001"
+- id: "019b0001-0001-7000-8000-000000000001"
   tree: "reference.pack_authoring.writing_skills"
   meta:
     pack:
@@ -143,10 +143,10 @@
     ```
 
     ## See Also
-    - Writing reference engrams — `me_engram_get({id: "019b0200-0002-7000-8000-000000000002"})`
-    - Quality checklist — `me_engram_get({id: "019b0200-0005-7000-8000-000000000005"})`
+    - Writing reference engrams — `me_engram_get({id: "019b0001-0002-7000-8000-000000000002"})`
+    - Quality checklist — `me_engram_get({id: "019b0001-0005-7000-8000-000000000005"})`
 
-- id: "019b0200-0002-7000-8000-000000000002"
+- id: "019b0001-0002-7000-8000-000000000002"
   tree: "reference.pack_authoring.writing_reference"
   meta:
     pack:
@@ -166,7 +166,7 @@
 
     Linking by ID is fine for optional depth:
     ```
-    For the full 6-section template, see me_engram_get({id: "019b0200-0001-7000-8000-000000000001"}).
+    For the full 6-section template, see me_engram_get({id: "019b0001-0001-7000-8000-000000000001"}).
     ```
     But the engram should still be useful without following the link.
 
@@ -234,10 +234,10 @@
     Exception: a skill engram with a long but cohesive procedure (all 6 sections tightly coupled) can stay as one engram up to ~6000 tokens. Splitting a procedure mid-flow hurts more than the length.
 
     ## See Also
-    - Writing skill engrams — `me_engram_get({id: "019b0200-0001-7000-8000-000000000001"})`
-    - Pack organization — `me_engram_get({id: "019b0200-0003-7000-8000-000000000003"})`
+    - Writing skill engrams — `me_engram_get({id: "019b0001-0001-7000-8000-000000000001"})`
+    - Pack organization — `me_engram_get({id: "019b0001-0003-7000-8000-000000000003"})`
 
-- id: "019b0200-0003-7000-8000-000000000003"
+- id: "019b0001-0003-7000-8000-000000000003"
   tree: "reference.pack_authoring.organization"
   meta:
     pack:
@@ -313,7 +313,7 @@
 
     Reference other engrams by ID when useful:
     ```
-    For the full template, see me_engram_get({id: "019b0200-0001-7000-8000-000000000001"}).
+    For the full template, see me_engram_get({id: "019b0001-0001-7000-8000-000000000001"}).
     ```
 
     But never require the cross-reference. Each engram should be useful standalone. Think of cross-references as "see also" links, not "continued from" links.
@@ -331,10 +331,10 @@
     This is for human readers and tooling — it's not parsed by `me pack validate`. The authoritative name and version are in `meta.pack` on each engram.
 
     ## See Also
-    - ID allocation and versioning — `me_engram_get({id: "019b0200-0004-7000-8000-000000000004"})`
-    - Writing reference engrams — `me_engram_get({id: "019b0200-0002-7000-8000-000000000002"})`
+    - ID allocation and versioning — `me_engram_get({id: "019b0001-0004-7000-8000-000000000004"})`
+    - Writing reference engrams — `me_engram_get({id: "019b0001-0002-7000-8000-000000000002"})`
 
-- id: "019b0200-0004-7000-8000-000000000004"
+- id: "019b0001-0004-7000-8000-000000000004"
   tree: "reference.pack_authoring.id_versioning"
   meta:
     pack:
@@ -356,7 +356,7 @@
     prefixes:
       "019b0000": git-history
       "019b0100": project-bootstrap
-      "019b0200": pack-authoring
+      "019b0001": pack-authoring
       "019b0300": your-new-pack       # ← claim the next sequential value
     ```
 
@@ -368,7 +368,7 @@
 
     Breaking it down:
     ```
-    019b0200-0001-7000-8000-000000000001
+    019b0001-0001-7000-8000-000000000001
     ^^^^^^^^ ^^^^ ^ ^^^ ^    ^^^^^^^^^^^^
     prefix   seq  │  │  │    seq (repeated or extended)
                   │  │  └── RFC 9562 variant (must be 8, 9, a, or b)
@@ -384,16 +384,16 @@
 
     Number engrams sequentially within a pack:
     ```
-    019b0200-0001-7000-8000-000000000001   # First engram
-    019b0200-0002-7000-8000-000000000002   # Second engram
-    019b0200-0003-7000-8000-000000000003   # Third engram
+    019b0001-0001-7000-8000-000000000001   # First engram
+    019b0001-0002-7000-8000-000000000002   # Second engram
+    019b0001-0003-7000-8000-000000000003   # Third engram
     ```
 
     If you expect to insert engrams between existing ones in a future version, leave gaps:
     ```
-    019b0200-0010-7000-8000-000000000010   # Topic A
-    019b0200-0020-7000-8000-000000000020   # Topic B
-    019b0200-0030-7000-8000-000000000030   # Topic C
+    019b0001-0010-7000-8000-000000000010   # Topic A
+    019b0001-0020-7000-8000-000000000020   # Topic B
+    019b0001-0030-7000-8000-000000000030   # Topic C
     ```
 
     Gaps don't affect functionality — IDs are opaque identifiers to the system.
@@ -435,10 +435,10 @@
     There is no enforcement of semver — this is guidance for pack authors and consumers.
 
     ## See Also
-    - Pack organization — `me_engram_get({id: "019b0200-0003-7000-8000-000000000003"})`
-    - Quality checklist — `me_engram_get({id: "019b0200-0005-7000-8000-000000000005"})`
+    - Pack organization — `me_engram_get({id: "019b0001-0003-7000-8000-000000000003"})`
+    - Quality checklist — `me_engram_get({id: "019b0001-0005-7000-8000-000000000005"})`
 
-- id: "019b0200-0005-7000-8000-000000000005"
+- id: "019b0001-0005-7000-8000-000000000005"
   tree: "reference.pack_authoring.quality"
   meta:
     pack:
@@ -477,7 +477,7 @@
     ltree requires `[a-z0-9_]` per label. `reference.pack-authoring` fails — use `reference.pack_authoring`. `reference.PostgreSQL` fails — use `reference.postgresql`. Validation catches invalid ltree syntax.
 
     **ID format errors.**
-    The `7` at position 14 and `8` at position 19 are mandatory (UUIDv7 version + RFC 9562 variant). `019b0200-0001-0000-0000-000000000001` fails validation. Use the template: `<prefix>-NNNN-7000-8000-NNNNNNNNNNNN`.
+    The `7` at position 14 and `8` at position 19 are mandatory (UUIDv7 version + RFC 9562 variant). `019b0001-0001-0000-0000-000000000001` fails validation. Use the template: `<prefix>-NNNN-7000-8000-NNNNNNNNNNNN`.
 
     ### Content Mistakes
 
@@ -516,7 +516,7 @@
     ```
 
     ## See Also
-    - Writing skill engrams — `me_engram_get({id: "019b0200-0001-7000-8000-000000000001"})`
-    - Writing reference engrams — `me_engram_get({id: "019b0200-0002-7000-8000-000000000002"})`
-    - Pack organization — `me_engram_get({id: "019b0200-0003-7000-8000-000000000003"})`
-    - ID allocation — `me_engram_get({id: "019b0200-0004-7000-8000-000000000004"})`
+    - Writing skill engrams — `me_engram_get({id: "019b0001-0001-7000-8000-000000000001"})`
+    - Writing reference engrams — `me_engram_get({id: "019b0001-0002-7000-8000-000000000002"})`
+    - Pack organization — `me_engram_get({id: "019b0001-0003-7000-8000-000000000003"})`
+    - ID allocation — `me_engram_get({id: "019b0001-0004-7000-8000-000000000004"})`

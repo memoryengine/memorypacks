@@ -31,7 +31,7 @@ me pack import --dry-run packs/git-history.yaml
 
 | Pack | Description |
 |------|-------------|
-| *coming soon* | |
+| [pack-authoring](packs/pack-authoring.yaml) | How to write effective memory packs — skill engram structure, reference engram craft, organization, ID/versioning, and quality checklist |
 
 ## Pack format
 
@@ -69,9 +69,7 @@ Each pack claims a unique UUIDv7 prefix. Document it in a comment at the top of 
 
 | Prefix | Pack |
 |--------|------|
-| `019b0000` | git-history |
-| `019b0100` | project-bootstrap |
-| `019b0200` | pack-authoring |
+| `019b0001` | pack-authoring |
 
 When adding a new pack, choose the next available prefix.
 
