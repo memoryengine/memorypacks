@@ -11,6 +11,9 @@ jobs:
             -o /usr/local/bin/me
           chmod +x /usr/local/bin/me
       - name: Install yq
-        uses: mikefarah/yq-action@master
+        run: |
+          curl -fsSL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64" \
+            -o /usr/local/bin/yq
+          chmod +x /usr/local/bin/yq
       - name: Validate packs
         run: ./scripts/validate.sh
