@@ -63,42 +63,6 @@ Each pack is a standard engram YAML file. The only required convention is `meta.
 
 Additional meta keys (like `type`, `topic`, etc.) are optional — add whatever makes your content discoverable and filterable.
 
-## Writing a pack
-
-### Reference engrams
-
-Write engrams the same way you'd write any memory — specific, self-contained, concise.
-
-### Skill engrams
-
-Skill engram content is a prompt addressed to an agent. Structure it like this:
-
-```
-# Title — What This Skill Does
-
-<1-2 sentence overview>
-
-## What to Extract
-<What's worth creating memories for>
-<What to skip>
-
-## How to Extract
-<Numbered steps referencing specific MCP tool names>
-
-## Example Output
-<Complete me_engram_create call with all fields>
-
-## Scope Control
-<Limits to prevent runaway extraction>
-```
-
-Guidelines:
-- Use MCP tool names directly (`me_engram_create`, `me_engram_search`)
-- Include complete examples with all fields filled in
-- Prescribe tree and meta conventions — don't leave organization to the agent
-- Always include a duplicate-check step before creation
-- Set explicit scope limits ("last 50 commits", not "all commits")
-
 ### ID allocation
 
 Each pack claims a unique UUIDv7 prefix. Document it in a comment at the top of your file.
@@ -127,6 +91,20 @@ me pack import packs/git-history.yaml
 
 Old-version engrams are automatically cleaned up. Engrams that exist in both versions are updated in place (deterministic IDs).
 
+## Contributing
+
+1. Fork this repository
+2. Create your pack as a YAML file in `packs/`
+3. Validate with `me pack validate packs/your-pack.yaml`
+4. Submit a pull request
+
+All packs must:
+- Follow the format conventions above
+- Use a unique ID prefix (check the table above)
+- Include a header comment with pack name, version, description, and ID prefix
+- Have non-empty, well-written content
+- Have consistent `meta.pack.name` and `meta.pack.version` across all engrams
+
 ## Validation & CI
 
 Every pack is validated on push and pull request via GitHub Actions. The workflow checks:
@@ -146,20 +124,6 @@ me pack validate packs/git-history.yaml
 ```
 
 The script requires `me` and [`yq`](https://github.com/mikefarah/yq) on PATH.
-
-## Contributing
-
-1. Fork this repository
-2. Create your pack as a YAML file in `packs/`
-3. Validate with `me pack validate packs/your-pack.yaml`
-4. Submit a pull request
-
-All packs must:
-- Follow the format conventions above
-- Use a unique ID prefix (check the table above)
-- Include a header comment with pack name, version, description, and ID prefix
-- Have non-empty, well-written content
-- Have consistent `meta.pack.name` and `meta.pack.version` across all engrams
 
 ## License
 

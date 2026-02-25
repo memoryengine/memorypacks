@@ -1,0 +1,6 @@
+# ID prefix registry — each pack claims a unique UUIDv7 timestamp prefix.
+# Prefixes are allocated sequentially. Check this file before adding a new pack.
+prefixes:
+  "019b0000": git-history
+  "019b0100": project-bootstrap
+  "019b0200": pack-authoring
