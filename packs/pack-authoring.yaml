@@ -1,0 +1,522 @@
+# Pack: pack-authoring
+# Version: 0.1.0
+# Description: Teaches agents and humans how to write effective memory packs.
+# ID prefix: 019b0200
+
+- id: "019b0200-0001-7000-8000-000000000001"
+  tree: "reference.pack_authoring.writing_skills"
+  meta:
+    pack:
+      name: "pack-authoring"
+      version: "0.1.0"
+    type: "reference"
+    topic: "skill-engrams"
+  content: |
+    # Writing Skill Engrams
+
+    Skill engrams are procedural instructions that teach agents how to do something. They are the most powerful pack content type — a single skill engram can cause an agent to generate dozens of useful reference engrams. Getting the structure right matters.
+
+    ## The 6-Section Structure
+
+    Every skill engram should follow this template:
+
+    ```
+    # Title — What This Skill Does
+
+    <1-2 sentence overview of the task>
+
+    ## What to Extract
+    <Concrete list of what's worth creating memories for>
+    <Equally concrete list of what to skip>
+
+    ## How to Extract
+    <Numbered steps the agent should follow>
+    <Reference specific tool names and shell commands>
+
+    ## Example Output
+    <At least one complete me_engram_create call with realistic arguments>
+
+    ## Scope Control
+    <Limits and defaults to prevent runaway extraction>
+    ```
+
+    Each section serves a specific purpose. Omitting any section produces worse results.
+
+    ### Title
+    Format as `# Name — Brief Description`. The dash separator helps both humans scanning a list and BM25 search matching.
+
+    ### Overview
+    One or two sentences that tell the agent what it's about to do. This orients the agent before it reads the detailed steps.
+
+    ### What to Extract
+    Two parts: what to capture and what to skip. Be specific in both directions.
+
+    Good: "Focus on architectural decisions, bug fixes with root causes, feature additions with motivation. Skip version bumps, formatting-only changes, merge commits."
+
+    Bad: "Extract important things from the project."
+
+    Agents are generous by default — they will create engrams for everything unless you explicitly tell them what to skip.
+
+    ### How to Extract
+    Numbered steps using exact tool names. Write `me_engram_create`, not "create a memory" or "save this." Write `me_engram_search`, not "check for duplicates."
+
+    Always include a duplicate-check step:
+    ```
+    4. Before creating, search for existing engrams:
+       me_engram_search({meta: {"source": "git", "commit": "<sha>"}})
+       Skip creation if a match exists.
+    ```
+
+    Without this, re-running the skill creates duplicates every time.
+
+    ### Example Output
+    Show a complete `me_engram_create` call with realistic field values. Agents follow patterns they can see — an example is worth more than a paragraph of explanation.
+
+    Prescribe the tree path and meta keys:
+    ```
+    me_engram_create({
+      content: "Split auth into middleware + service layers for independent testability.",
+      tree: "work.projects.api.history",
+      meta: {source: "git", commit: "a1b2c3d"},
+      temporal: {start: "2026-02-10T14:30:00Z"}
+    })
+    ```
+
+    Don't leave tree and meta conventions to the agent's judgment. If you want all generated engrams under `work.projects.<name>.history`, say so. If you want `meta.source` set to `"git"`, show it.
+
+    ### Scope Control
+    Set concrete limits. "Last 50 commits" is actionable. "Recent commits" is not. Without limits, an eager agent will try to process an entire repository.
+
+    Good scope controls:
+    - "Default: last 50 commits. Ask the user before going further."
+    - "Process only files matching `src/**/*.ts`. Ignore test files."
+    - "Stop after 20 engrams. Summarize remaining items instead."
+
+    ## Voice and Style
+
+    - **Imperative, direct**: "Run `git log`", "Call `me_engram_create`", "Search before creating."
+    - **Address the agent as "you"**: "You are an agent with access to..." not "The agent should..."
+    - **Use exact MCP tool names**: `me_engram_create`, `me_engram_search`, `me_engram_get` — not paraphrases.
+    - **Be concise**: Agents don't need motivation or background. Tell them what to do.
+
+    ## Complete Example
+
+    Here is a condensed skill engram showing all 6 sections:
+
+    ```yaml
+    content: |
+      # Dependency Audit — Extract Package Decision History
+
+      You have access to a Node.js project and memory engine MCP tools.
+      Extract the reasoning behind key dependency choices.
+
+      ## What to Extract
+      Create engrams for:
+      - Why a major dependency was chosen over alternatives
+      - Migration decisions (e.g., switching from Express to Fastify)
+      - Intentional rejections ("we evaluated X but chose not to use it")
+
+      Skip:
+      - Transitive dependencies the team didn't choose directly
+      - Dev dependencies with obvious purpose (prettier, eslint)
+      - Version bumps without context
+
+      ## How to Extract
+      1. Read `package.json` for the dependency list
+      2. Run `git log --all --oneline -- package.json` to find when deps were added
+      3. For each significant addition, run `git show <sha>` for context
+      4. Search before creating: `me_engram_search({meta: {source: "deps", package: "<name>"}})`
+      5. Call `me_engram_create` for each dependency with meaningful history
+
+      ## Example Output
+      me_engram_create({
+        content: "Chose Fastify over Express for the API server. Benchmarks showed 2x throughput for our JSON-heavy workload. Migration completed in PR #142.",
+        tree: "work.projects.api.dependencies",
+        meta: {source: "deps", package: "fastify"},
+        temporal: {start: "2026-01-15T00:00:00Z"}
+      })
+
+      ## Scope Control
+      - Process only `dependencies`, not `devDependencies`
+      - Limit to packages added in the last 6 months
+      - Maximum 15 engrams. Prioritize by download count or import frequency.
+    ```
+
+    ## See Also
+    - Writing reference engrams — `me_engram_get({id: "019b0200-0002-7000-8000-000000000002"})`
+    - Quality checklist — `me_engram_get({id: "019b0200-0005-7000-8000-000000000005"})`
+
+- id: "019b0200-0002-7000-8000-000000000002"
+  tree: "reference.pack_authoring.writing_reference"
+  meta:
+    pack:
+      name: "pack-authoring"
+      version: "0.1.0"
+    type: "reference"
+    topic: "reference-engrams"
+  content: |
+    # Writing Reference Engrams
+
+    Reference engrams contain static, factual content — documentation, conventions, patterns, decision records. Unlike skill engrams that instruct agents to do things, reference engrams are looked up and read. They answer questions rather than give orders.
+
+    ## Core Principles
+
+    ### Self-Contained
+    Each engram should make sense when read alone. An agent finding your engram via search has no guarantee it will also find the other engrams in your pack. Don't write "as described in the previous engram" — either repeat the essential context or link by ID.
+
+    Linking by ID is fine for optional depth:
+    ```
+    For the full 6-section template, see me_engram_get({id: "019b0200-0001-7000-8000-000000000001"}).
+    ```
+    But the engram should still be useful without following the link.
+
+    ### One Concept Per Engram
+    Say one thing well rather than covering everything. A 500-token engram that precisely answers "how do I structure tree paths?" is more useful than a 4000-token engram that covers tree paths, meta conventions, search patterns, and temporal ranges all at once.
+
+    Why: search retrieves whole engrams. A focused engram means the agent gets exactly what it needs without wading through unrelated content. It also means BM25 and semantic search rank it higher for relevant queries — less noise in the content means stronger signal.
+
+    ### Searchable Structure
+    Your engram will be found via BM25 keyword search, semantic vector search, or both. Write with both in mind:
+
+    **For BM25**: Use the specific terms someone would search for. If your engram is about ltree path conventions, include the words "ltree", "tree path", and "path convention" — not just "hierarchical organization."
+
+    **For semantic search**: Write a clear opening sentence that captures the engram's purpose. The embedding model weights early content heavily. "This engram covers ltree path naming conventions for memory engine" is better than "There are several things to consider when organizing your data."
+
+    **Headings help both**: Use descriptive markdown headings (`## Tree Path Naming Rules`) rather than generic ones (`## Details`). Headings create strong keyword anchors and improve semantic clustering.
+
+    ## Formatting Guidelines
+
+    ### Use Markdown
+    Agents parse markdown well. Use headings, bullet lists, code blocks, and tables where they add clarity.
+
+    ### Code Snippets
+    Include code examples whenever the concept involves code. Show the exact syntax, not a prose description of it:
+
+    Good:
+    ```
+    tree: "work.projects.api.dependencies"
+    ```
+
+    Bad: "Set the tree to a path starting with 'work.projects' followed by the project name and then 'dependencies'."
+
+    ### Tables for Structured Data
+    When comparing options or listing fields with attributes, use tables:
+
+    | Field | Required | Purpose |
+    |-------|----------|---------|
+    | `content` | Yes | The memory text |
+    | `tree` | No | Hierarchical path |
+    | `meta` | No | Faceted attributes |
+
+    ### Keep It Concise
+    Remove filler. "It should be noted that" → delete. "In order to" → "to." "At this point in time" → "now." Every token counts against the 8192 embedding limit.
+
+    ## Using the Temporal Field
+
+    Set `temporal` when content has a shelf life:
+    - API versions: `temporal: {start: "2026-01-01", end: "2027-01-01"}`
+    - Dated conventions: `temporal: {start: "2026-02-01"}` (valid from this date forward)
+    - Historical context: `temporal: {start: "2025-06-01", end: "2025-12-31"}` (applied during this period)
+
+    Omit `temporal` for evergreen content (language syntax, mathematical facts, stable conventions).
+
+    Temporal filtering uses `tstzrange` overlap — queries with a time range will match engrams whose temporal range overlaps.
+
+    ## When to Split
+
+    If an engram exceeds ~4000 tokens, consider splitting. Signs you should split:
+    - The content has 3+ top-level headings covering different subtopics
+    - You find yourself writing "see above" or "as mentioned earlier"
+    - The engram would match too many different search queries equally
+
+    Split by subtopic, not by arbitrary length. Each resulting engram should have a clear, focused purpose.
+
+    Exception: a skill engram with a long but cohesive procedure (all 6 sections tightly coupled) can stay as one engram up to ~6000 tokens. Splitting a procedure mid-flow hurts more than the length.
+
+    ## See Also
+    - Writing skill engrams — `me_engram_get({id: "019b0200-0001-7000-8000-000000000001"})`
+    - Pack organization — `me_engram_get({id: "019b0200-0003-7000-8000-000000000003"})`
+
+- id: "019b0200-0003-7000-8000-000000000003"
+  tree: "reference.pack_authoring.organization"
+  meta:
+    pack:
+      name: "pack-authoring"
+      version: "0.1.0"
+    type: "reference"
+    topic: "pack-organization"
+  content: |
+    # Pack Organization and Discoverability
+
+    A pack is more than a bag of engrams — how you structure it determines whether agents and users can find and use the content effectively.
+
+    ## Tree Path Strategy
+
+    Tree paths control hierarchical browsing and ltree queries. Choose paths for discoverability, not containment.
+
+    **Good**: `tools.git.history_extraction` — an agent searching for git tools finds this naturally.
+    **Bad**: `packs.git_history.skill` — buries the content under a "packs" prefix that nobody searches for.
+
+    Pack identity comes from `meta.pack`, not the tree path. Your tree paths should reflect the content's domain, as if the engrams were hand-created rather than imported from a pack.
+
+    ### Conventions
+
+    - **Reference content**: `reference.<domain>.<subtopic>` — e.g., `reference.postgres.vacuuming`
+    - **Skill/procedural content**: `tools.<tool>.<action>` — e.g., `tools.git.history_extraction`
+    - **Project-specific**: `work.projects.<name>.<aspect>` — e.g., `work.projects.api.architecture`
+
+    These are conventions, not requirements. Use whatever tree structure makes your content findable for the queries people will actually run.
+
+    ### Tree Path Rules
+
+    ltree paths must match `[a-z0-9_]+` per label, separated by dots. Common mistakes:
+    - `reference.pack-authoring` — hyphens are invalid, use `pack_authoring`
+    - `reference.PostgreSQL` — uppercase is invalid, use `postgresql`
+    - `reference.` — trailing dot is invalid
+    - `reference..nested` — double dot is invalid
+
+    ## Meta Tagging
+
+    `meta.pack` is required. Additional meta keys are optional but improve filterability.
+
+    Useful optional keys:
+    ```yaml
+    meta:
+      pack:
+        name: "my-pack"
+        version: "0.1.0"
+      type: "skill"           # or "reference" — enables me_engram_search({meta: {type: "skill"}})
+      topic: "git-history"    # enables me_engram_search({meta: {topic: "git-history"}})
+    ```
+
+    `type` and `topic` are conventions used by the bundled skills, not enforced by the system. Use them for consistency with the ecosystem. Use any additional keys that make sense for your domain — meta is free-form JSONB.
+
+    Meta filtering uses JSONB containment (`@>`), so `{meta: {type: "skill"}}` matches any engram whose meta contains at least `{type: "skill"}`, regardless of other keys present.
+
+    ## Engram Granularity
+
+    **One concept per engram, not one pack = one engram.** A pack with a single 7000-token engram covering five topics is harder to search, harder to update, and wastes context when an agent only needs one topic.
+
+    Split by independently searchable concepts:
+    - If someone might search for topic A without caring about topic B, they should be separate engrams.
+    - If topics A and B are always needed together, keep them in one engram.
+
+    This pack (`pack-authoring`) has 5 engrams — one per distinct topic. An agent asking "how do I write a skill engram?" gets engram 0001 without also loading the versioning mechanics from engram 0004.
+
+    ## Ordering and Numbering
+
+    Sequential IDs within the pack (`0001`, `0002`, `0003`, ...) create a logical reading order. This doesn't affect search — agents find engrams by relevance, not by number — but it helps humans reading the YAML file and helps during development.
+
+    Leave gaps if you expect to insert engrams later. Using `0001`, `0002`, `0003` is fine for a first version; the `me pack import` system doesn't care about sequence gaps.
+
+    ## Cross-Referencing
+
+    Reference other engrams by ID when useful:
+    ```
+    For the full template, see me_engram_get({id: "019b0200-0001-7000-8000-000000000001"}).
+    ```
+
+    But never require the cross-reference. Each engram should be useful standalone. Think of cross-references as "see also" links, not "continued from" links.
+
+    ## Header Comment Convention
+
+    Start your YAML file with a header comment:
+    ```yaml
+    # Pack: my-pack
+    # Version: 0.1.0
+    # Description: One-line summary of what this pack provides.
+    # ID prefix: 019bXX00
+    ```
+
+    This is for human readers and tooling — it's not parsed by `me pack validate`. The authoritative name and version are in `meta.pack` on each engram.
+
+    ## See Also
+    - ID allocation and versioning — `me_engram_get({id: "019b0200-0004-7000-8000-000000000004"})`
+    - Writing reference engrams — `me_engram_get({id: "019b0200-0002-7000-8000-000000000002"})`
+
+- id: "019b0200-0004-7000-8000-000000000004"
+  tree: "reference.pack_authoring.id_versioning"
+  meta:
+    pack:
+      name: "pack-authoring"
+      version: "0.1.0"
+    type: "reference"
+    topic: "id-versioning"
+  content: |
+    # ID Allocation and Version Management
+
+    Memory packs use deterministic UUIDv7 IDs for idempotent imports. This engram covers the mechanics of claiming IDs and managing versions.
+
+    ## Claiming a Prefix
+
+    Before writing a pack, claim a unique 8-character prefix in `registry.yaml` in the memorypacks repository. Each pack gets one prefix that is never reused.
+
+    ```yaml
+    # registry.yaml
+    prefixes:
+      "019b0000": git-history
+      "019b0100": project-bootstrap
+      "019b0200": pack-authoring
+      "019b0300": your-new-pack       # ← claim the next sequential value
+    ```
+
+    Prefix allocation is first-come-first-served via pull request. The CI pipeline validates that no two packs share a prefix.
+
+    ## ID Format
+
+    The format is: `<prefix>-NNNN-7000-8000-NNNNNNNNNNNN`
+
+    Breaking it down:
+    ```
+    019b0200-0001-7000-8000-000000000001
+    ^^^^^^^^ ^^^^ ^ ^^^ ^    ^^^^^^^^^^^^
+    prefix   seq  │  │  │    seq (repeated or extended)
+                  │  │  └── RFC 9562 variant (must be 8, 9, a, or b)
+                  │  └───── UUIDv7 version (must be 7)
+                  └──────── part of the sequence
+    ```
+
+    The `7` at position 14 and `8` at position 19 are required by the UUID specification. Without them, the ID fails UUIDv7 validation and `me pack validate` will reject it.
+
+    For the trailing 12 digits, mirror the sequence number. The first engram uses `000000000001`, the second `000000000002`, and so on. This is a convention for readability, not a hard requirement — any valid hex digits work.
+
+    ## Sequential Numbering
+
+    Number engrams sequentially within a pack:
+    ```
+    019b0200-0001-7000-8000-000000000001   # First engram
+    019b0200-0002-7000-8000-000000000002   # Second engram
+    019b0200-0003-7000-8000-000000000003   # Third engram
+    ```
+
+    If you expect to insert engrams between existing ones in a future version, leave gaps:
+    ```
+    019b0200-0010-7000-8000-000000000010   # Topic A
+    019b0200-0020-7000-8000-000000000020   # Topic B
+    019b0200-0030-7000-8000-000000000030   # Topic C
+    ```
+
+    Gaps don't affect functionality — IDs are opaque identifiers to the system.
+
+    ## Version Management
+
+    Pack version lives in `meta.pack.version` on every engram. All engrams in a file must share the same version.
+
+    ### Bumping a Version
+
+    When you release a new version of your pack:
+    1. Update `meta.pack.version` on every engram (e.g., `"0.1.0"` → `"0.2.0"`)
+    2. Keep IDs stable for existing engrams — do not change their IDs
+    3. Assign the next sequential ID for any new engrams
+    4. Remove engrams you no longer want from the YAML file
+
+    ### What Happens on Import
+
+    `me pack import` handles version transitions automatically:
+
+    1. Searches for existing engrams with the same `meta.pack.name`
+    2. Any existing engram with a different `meta.pack.version` is marked as stale
+    3. Stale engrams are deleted
+    4. New engrams are upserted (deterministic IDs → `ON CONFLICT (id) DO UPDATE`)
+
+    This means:
+    - **Updated engrams** (same ID, new content): upserted in place
+    - **New engrams** (new ID): inserted
+    - **Removed engrams** (ID not in new file): deleted as stale
+    - **Re-importing same version**: idempotent, no-op upsert
+
+    ### Version Numbering
+
+    Use semantic versioning: `MAJOR.MINOR.PATCH`
+    - **PATCH** (0.1.0 → 0.1.1): Typo fixes, minor wording improvements
+    - **MINOR** (0.1.0 → 0.2.0): New engrams added, existing content expanded
+    - **MAJOR** (0.1.0 → 1.0.0): Significant restructuring, engrams removed or fundamentally rewritten
+
+    There is no enforcement of semver — this is guidance for pack authors and consumers.
+
+    ## See Also
+    - Pack organization — `me_engram_get({id: "019b0200-0003-7000-8000-000000000003"})`
+    - Quality checklist — `me_engram_get({id: "019b0200-0005-7000-8000-000000000005"})`
+
+- id: "019b0200-0005-7000-8000-000000000005"
+  tree: "reference.pack_authoring.quality"
+  meta:
+    pack:
+      name: "pack-authoring"
+      version: "0.1.0"
+    type: "reference"
+    topic: "quality-checklist"
+  content: |
+    # Quality Checklist and Common Pitfalls
+
+    Run through this checklist before publishing a pack. Then review the pitfalls section to catch mistakes that validation alone won't find.
+
+    ## Pre-Publish Checklist
+
+    1. **Validation passes**: `me pack validate your-pack.yaml` exits 0
+    2. **Token count**: Each engram's content is under 8192 tokens (check with `bun scripts/count-tokens.ts`)
+    3. **Dry-run preview**: `me pack import --dry-run your-pack.yaml` shows expected counts
+    4. **Self-contained**: Each engram makes sense read in isolation
+    5. **Consistent meta.pack**: Every engram has identical `name` and `version`
+    6. **No duplication**: Content doesn't repeat what's in the bundled skills (0034-0036)
+    7. **Tree paths valid**: All lowercase, only `[a-z0-9_]` per label, dot-separated
+    8. **IDs valid**: Format `<prefix>-NNNN-7000-8000-NNNNNNNNNNNN`, prefix claimed in registry
+    9. **Header comment**: File starts with `# Pack:`, `# Version:`, `# Description:`, `# ID prefix:`
+
+    ## Common Pitfalls
+
+    ### Structural Mistakes
+
+    **Forgetting `meta.pack` on one engram.**
+    Every engram needs it, not just the first one. Validation catches this, but it's the most common error during initial authoring. Copy the meta block from your first engram as a starting point for each new one.
+
+    **Inconsistent name or version across engrams.**
+    If one engram says `version: "0.1.0"` and another says `version: "0.1"`, validation fails. Use exact string matches. Copy-paste the meta block rather than retyping it.
+
+    **Tree paths with hyphens or uppercase.**
+    ltree requires `[a-z0-9_]` per label. `reference.pack-authoring` fails — use `reference.pack_authoring`. `reference.PostgreSQL` fails — use `reference.postgresql`. Validation catches invalid ltree syntax.
+
+    **ID format errors.**
+    The `7` at position 14 and `8` at position 19 are mandatory (UUIDv7 version + RFC 9562 variant). `019b0200-0001-0000-0000-000000000001` fails validation. Use the template: `<prefix>-NNNN-7000-8000-NNNNNNNNNNNN`.
+
+    ### Content Mistakes
+
+    **Token overflow on skill engrams.**
+    Long skill engrams with detailed examples can exceed the 8192 token embedding limit. The content still imports fine, but the embedding will be truncated or fail, degrading semantic search. Check token counts during authoring, not after.
+
+    To fix: split the skill into a concise procedure engram and a separate reference engram with the detailed examples. The skill engram references the examples by ID.
+
+    **Vague skill instructions.**
+    "Extract useful information" gives an agent no actionable direction. "Run `git log --oneline -50`, for each non-trivial commit call `me_engram_create` with..." does. Use exact commands, exact tool names, and exact field names.
+
+    **Missing scope control.**
+    Without explicit limits, agents process everything. A skill that says "analyze the codebase" on a large project will run for hours creating hundreds of low-quality engrams. Always set defaults: "last 50 commits", "top-level `src/` files only", "maximum 20 engrams."
+
+    **Missing duplicate-check step in skills.**
+    Skills are meant to be re-runnable. Without a search-before-create step, every execution adds duplicates. Include: `me_engram_search({meta: {source: "...", key: "..."}})` and skip creation if a match exists.
+
+    **Leaving tree and meta to agent judgment.**
+    Don't write "organize the engrams appropriately." Write `tree: "work.projects.<name>.history"` and `meta: {source: "git", commit: "<sha>"}`. Agents produce consistent, searchable output when given exact conventions.
+
+    ### Ecosystem Mistakes
+
+    **ID prefix collision.**
+    Two packs using the same prefix will overwrite each other's engrams on import. Always claim your prefix in `registry.yaml` before writing. The CI validation script (`validate.sh`) catches collisions.
+
+    **Duplicating bundled skill content.**
+    Skills 0034-0036 already cover pack concepts, CLI usage, and format basics. A pack that repeats this content wastes tokens and creates confusion when the bundled version is updated but the pack version isn't. Go deeper or cover different topics instead.
+
+    **Not testing the full cycle.**
+    `me pack validate` catches structural errors but not content quality issues. Always do a full import cycle on a test instance:
+    ```bash
+    me pack validate your-pack.yaml        # Structure OK?
+    me pack import --dry-run your-pack.yaml # Counts look right?
+    me pack import your-pack.yaml           # Actually import
+    me engram search --semantic "your topic" # Do the engrams surface for relevant queries?
+    ```
+
+    ## See Also
+    - Writing skill engrams — `me_engram_get({id: "019b0200-0001-7000-8000-000000000001"})`
+    - Writing reference engrams — `me_engram_get({id: "019b0200-0002-7000-8000-000000000002"})`
+    - Pack organization — `me_engram_get({id: "019b0200-0003-7000-8000-000000000003"})`
+    - ID allocation — `me_engram_get({id: "019b0200-0004-7000-8000-000000000004"})`
