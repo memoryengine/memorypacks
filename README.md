@@ -4,7 +4,7 @@ Pre-built knowledge and skills for [memory engine](https://memory.build) — imp
 
 ## What are memory packs?
 
-A memory pack is a YAML file containing engrams (memories) that you import with `me pack import`. No code, no plugins, no running processes.
+A memory pack is a YAML file containing memories that you import with `me pack import`. No code, no plugins, no running processes.
 
 Packs may contain a mix of:
 
@@ -31,12 +31,12 @@ me pack import --dry-run packs/git-history.yaml
 
 | Pack | Description |
 |------|-------------|
-| [pack-authoring](packs/pack-authoring.yaml) | How to write effective memory packs — skill engram structure, reference engram craft, organization, ID/versioning, and quality checklist |
+| [pack-authoring](packs/pack-authoring.yaml) | How to write effective memory packs — skill memory structure, reference memory craft, organization, ID/versioning, and quality checklist |
 | [skill-to-pack](packs/skill-to-pack.yaml) | Convert Agent Skills (agentskills.io) into memory engine packs — format reference, conversion procedure, field mapping, and edge cases |
 
 ## Pack format
 
-Each pack is a standard engram YAML file. The only required convention is `meta.pack: {name, version}` and deterministic IDs:
+Each pack is a standard memory YAML file. The only required convention is `meta.pack: {name, version}` and deterministic IDs:
 
 ```yaml
 # Pack: example
@@ -60,7 +60,7 @@ Each pack is a standard engram YAML file. The only required convention is `meta.
 - **Meta**: must include `meta.pack` as an object with `name` and `version` — this is the only required convention
 - **IDs**: deterministic UUIDv7 with a fixed prefix per pack (makes re-imports idempotent)
 - **Tree**: pack authors choose tree paths for discoverability — no fixed prefix required
-- **Content**: non-empty, self-contained, follows [engram best practices](https://memory.build)
+- **Content**: non-empty, self-contained, follows [memory best practices](https://memory.build)
 
 Additional meta keys (like `type`, `topic`, etc.) are optional — add whatever makes your content discoverable and filterable.
 
@@ -82,14 +82,14 @@ When adding a new pack, choose the next available prefix.
 ```bash
 # First import: installs v0.1.0
 me pack import packs/git-history.yaml
-# Imported 1 engram, deleted 0 (pack: git-history@0.1.0)
+# Imported 1 memory, deleted 0 (pack: git-history@0.1.0)
 
 # After updating the file to v0.2.0:
 me pack import packs/git-history.yaml
-# Imported 2 engrams, deleted 1 (pack: git-history@0.2.0)
+# Imported 2 memories, deleted 1 (pack: git-history@0.2.0)
 ```
 
-Old-version engrams are automatically cleaned up. Engrams that exist in both versions are updated in place (deterministic IDs).
+Old-version memories are automatically cleaned up. Memories that exist in both versions are updated in place (deterministic IDs).
 
 ## Contributing
 
@@ -103,7 +103,7 @@ All packs must:
 - Use a unique ID prefix (check the table above)
 - Include a header comment with pack name, version, description, and ID prefix
 - Have non-empty, well-written content
-- Have consistent `meta.pack.name` and `meta.pack.version` across all engrams
+- Have consistent `meta.pack.name` and `meta.pack.version` across all memories
 
 ## Validation & CI
 

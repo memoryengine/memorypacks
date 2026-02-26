@@ -90,16 +90,16 @@
 
     ## What to Extract
 
-    Create engrams for:
+    Create memories for:
     - Frontmatter metadata (becomes pack header comment and `meta` fields)
-    - Each major section (h2 heading) in the SKILL.md body — one engram per topic
-    - Each `references/*.md` file — one or more engrams per file (chunk if >4000 tokens)
-    - Short scripts (<100 lines) — inline as code blocks within a reference engram
+    - Each major section (h2 heading) in the SKILL.md body — one memory per topic
+    - Each `references/*.md` file — one or more memories per file (chunk if >4000 tokens)
+    - Short scripts (<100 lines) — inline as code blocks within a reference memory
 
     Skip:
     - Binary assets (images, compiled files) — note their existence but don't inline
     - Large scripts (>100 lines) — summarize key logic in prose instead
-    - Deeply nested references (files referencing other files) — flatten to top-level engrams
+    - Deeply nested references (files referencing other files) — flatten to top-level memories
     - `allowed-tools` declarations — these are Agent Skills-specific runtime config
 
     ## How to Extract
@@ -109,13 +109,13 @@
     2. Choose a pack name. Derive it from the skill's `name` field. Keep hyphens for the pack name (`meta.pack.name`), but convert to underscores for ltree paths:
        - Skill `name: "pdf-processing"` → pack name `"pdf-processing"` → tree prefix `pdf_processing`
 
-    3. Identify major sections in the body. Each `## ` heading is a candidate engram boundary. Merge short sections (under ~200 tokens) with the next section. Keep related subsections together.
+    3. Identify major sections in the body. Each `## ` heading is a candidate memory boundary. Merge short sections (under ~200 tokens) with the next section. Keep related subsections together.
 
-    4. Read any `references/*.md` files. Each file becomes one or more engrams. If a file exceeds ~4000 tokens, chunk it at `## ` boundaries. Track provenance with `meta.source_file` and `meta.chunk`.
+    4. Read any `references/*.md` files. Each file becomes one or more memories. If a file exceeds ~4000 tokens, chunk it at `## ` boundaries. Track provenance with `meta.source_file` and `meta.chunk`.
 
-    5. Convert file references to engram ID references. Replace `See [FORMS.md](references/FORMS.md)` with `For more detail: me_engram_get({id: "..."})` using the ID you assigned to that file's engram.
+    5. Convert file references to memory ID references. Replace `See [FORMS.md](references/FORMS.md)` with `For more detail: me_memory_get({id: "..."})` using the ID you assigned to that file's memory.
 
-    6. Choose tree paths for each engram. All content lives under the pack's namespace:
+    6. Choose tree paths for each memory. All content lives under the pack's namespace:
        - `<pack_name>.<subtopic>` — e.g., `pdf_processing.text_extraction`
        - Section "How to extract text" → `pdf_processing.text_extraction`
        - Reference file `references/FORMS.md` → `pdf_processing.forms`
@@ -136,7 +136,7 @@
 
     9. If importing into an existing database, search before creating to avoid duplicates:
        ```
-       me_engram_search({meta: {pack: {name: "<pack-name>"}}})
+       me_memory_search({meta: {pack: {name: "<pack-name>"}}})
        ```
 
     ## Example Output
@@ -177,7 +177,7 @@
     ## Scope Control
 
     - Convert one skill directory at a time.
-    - Maximum ~10 engrams per skill conversion. If a skill would produce more, be selective — prioritize the most searchable and reusable content.
+    - Maximum ~10 memories per skill conversion. If a skill would produce more, be selective — prioritize the most searchable and reusable content.
     - Skip files over 8000 tokens entirely. Note them for manual splitting: "This skill includes `references/LARGE_FILE.md` (estimated ~12000 tokens) which should be split manually."
     - Default version: `0.1.0` for the first conversion.
 
@@ -199,27 +199,27 @@
     | Agent Skill Field | Memory Pack Field | Notes |
     |---|---|---|
     | `name` (frontmatter) | `meta.pack.name` | Keep hyphens for pack name. Convert to underscores for ltree paths. |
-    | `description` (frontmatter) | Header comment `# Description:` | Also use as the first engram's overview paragraph. |
+    | `description` (frontmatter) | Header comment `# Description:` | Also use as the first memory's overview paragraph. |
     | `metadata.version` (frontmatter) | `meta.source_skill.version` | Pack version (`meta.pack.version`) starts at `0.1.0`. |
     | `metadata.author` (frontmatter) | `meta.source_skill.author` | Preserve provenance. |
     | `license` (frontmatter) | `meta.source_skill.license` | Preserve provenance. SPDX identifier. |
-    | `compatibility` (frontmatter) | Note in content | Mention environmental requirements in a reference engram. |
+    | `compatibility` (frontmatter) | Note in content | Mention environmental requirements in a reference memory. |
     | `allowed-tools` (frontmatter) | Not converted | Agent Skills-specific runtime config. |
-    | SKILL.md body sections | Separate engrams | One engram per major `## ` heading. |
-    | `references/*.md` | Separate engrams | One or more engrams per file. Add `meta.source_file` and `meta.chunk`. |
+    | SKILL.md body sections | Separate memories | One memory per major `## ` heading. |
+    | `references/*.md` | Separate memories | One or more memories per file. Add `meta.source_file` and `meta.chunk`. |
     | `scripts/*.py` (short) | Inline code block | Only for scripts under ~100 lines. |
-    | `assets/` | Usually skip | Note existence in a reference engram. |
+    | `assets/` | Usually skip | Note existence in a reference memory. |
 
     ## Content Splitting Strategy
 
     - Split at `## ` (h2) headings by default
     - Merge short sections (under ~200 tokens) with the next section
     - Keep related subsections together if they share context
-    - Each resulting engram should stand alone — no "as described above" references
+    - Each resulting memory should stand alone — no "as described above" references
 
     ## Chunked File Metadata
 
-    When a `references/` file is split across multiple engrams, track provenance:
+    When a `references/` file is split across multiple memories, track provenance:
 
     ```yaml
     meta:
@@ -262,7 +262,7 @@
         license: "Apache-2.0"
     ```
 
-    Include `source_skill` on the first engram (or all engrams if you prefer). At minimum, the first engram should carry it. The `meta.pack` fields track the *pack* identity; `meta.source_skill` tracks where the content originally came from.
+    Include `source_skill` on the first memory (or all memories if you prefer). At minimum, the first memory should carry it. The `meta.pack` fields track the *pack* identity; `meta.source_skill` tracks where the content originally came from.
 
 - id: "019b0002-0004-7000-8000-000000000004"
   tree: "skill_to_pack.limitations"
@@ -281,13 +281,13 @@
 
     Memory packs are text-only. They cannot execute code.
 
-    - **Short scripts** (<100 lines): Inline as a fenced code block within a reference engram. Specify the language for syntax highlighting: ` ```python `.
+    - **Short scripts** (<100 lines): Inline as a fenced code block within a reference memory. Specify the language for syntax highlighting: ` ```python `.
     - **Large scripts** (>100 lines): Don't inline. Instead, summarize the script's purpose and key logic in prose: "This skill includes a Python script (`scripts/extract.py`) that uses pdfplumber to extract tables. It handles multi-page tables by tracking row continuations across page boundaries."
-    - **Multi-file scripts**: Summarize the entry point and architecture. Don't try to flatten a project into engram content.
+    - **Multi-file scripts**: Summarize the entry point and architecture. Don't try to flatten a project into memory content.
 
     ## Binary Assets
 
-    Images, compiled templates, binary data files — these cannot be stored in engrams. Note their existence and purpose in a reference engram: "The skill includes `assets/form-template.pdf` — a sample fillable PDF used for testing the form-fill workflow."
+    Images, compiled templates, binary data files — these cannot be stored in memories. Note their existence and purpose in a reference memory: "The skill includes `assets/form-template.pdf` — a sample fillable PDF used for testing the form-fill workflow."
 
     ## Progressive Disclosure
 
@@ -298,10 +298,10 @@
 
     Memory packs use explicit ID references:
     ```
-    For form-filling details: me_engram_get({id: "019bXX00-0003-7000-8000-000000000003"})
+    For form-filling details: me_memory_get({id: "019bXX00-0003-7000-8000-000000000003"})
     ```
 
-    Convert file references to engram ID references. This preserves the progressive disclosure pattern while making all content searchable. The agent no longer needs filesystem access to read the referenced content — it's in the database.
+    Convert file references to memory ID references. This preserves the progressive disclosure pattern while making all content searchable. The agent no longer needs filesystem access to read the referenced content — it's in the database.
 
     ## Tool References
 
@@ -317,7 +317,7 @@
 
     ## Interactivity and Feedback Loops
 
-    Some skills have iterative workflows: "Run the validator, check output, fix errors, repeat." These convert well as procedural (skill-type) engrams. The numbered-step format in the "How to Extract" section naturally captures loops:
+    Some skills have iterative workflows: "Run the validator, check output, fix errors, repeat." These convert well as procedural (skill-type) memories. The numbered-step format in the "How to Extract" section naturally captures loops:
     ```
     5. Run `me pack validate output.yaml`
     6. If validation fails, fix the reported errors and repeat from step 5.
@@ -325,15 +325,15 @@
 
     ## Large Skills
 
-    Skills with `SKILL.md` over 500 lines plus multiple reference files may produce more than 10 engrams. Options:
+    Skills with `SKILL.md` over 500 lines plus multiple reference files may produce more than 10 memories. Options:
 
     - **Be selective**: Convert only the most valuable and searchable content. Skip sections that are too niche or context-dependent.
     - **Split into two packs**: If the skill covers two distinct domains (e.g., "pdf-processing" covers both extraction and generation), create separate packs for each.
-    - **Summarize instead of converting**: For dense reference files, write a concise summary engram instead of converting every detail.
+    - **Summarize instead of converting**: For dense reference files, write a concise summary memory instead of converting every detail.
 
     ## Version Tracking
 
-    Preserve the original skill's identity for provenance. On at least the first engram:
+    Preserve the original skill's identity for provenance. On at least the first memory:
 
     ```yaml
     meta:
