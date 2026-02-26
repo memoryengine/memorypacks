@@ -32,6 +32,7 @@ me pack import --dry-run packs/git-history.yaml
 | Pack | Description |
 |------|-------------|
 | [pack-authoring](packs/pack-authoring.yaml) | How to write effective memory packs — skill engram structure, reference engram craft, organization, ID/versioning, and quality checklist |
+| [skill-to-pack](packs/skill-to-pack.yaml) | Convert Agent Skills (agentskills.io) into memory engine packs — format reference, conversion procedure, field mapping, and edge cases |
 
 ## Pack format
 
@@ -70,6 +71,7 @@ Each pack claims a unique UUIDv7 prefix. Document it in a comment at the top of 
 | Prefix | Pack |
 |--------|------|
 | `019b0001` | pack-authoring |
+| `019b0002` | skill-to-pack |
 
 When adding a new pack, choose the next available prefix.
 

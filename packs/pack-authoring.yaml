@@ -4,7 +4,7 @@
 # ID prefix: 019b0001
 
 - id: "019b0001-0001-7000-8000-000000000001"
-  tree: "reference.pack_authoring.writing_skills"
+  tree: "pack_authoring.writing_skills"
   meta:
     pack:
       name: "pack-authoring"
@@ -147,7 +147,7 @@
     - Quality checklist — `me_engram_get({id: "019b0001-0005-7000-8000-000000000005"})`
 
 - id: "019b0001-0002-7000-8000-000000000002"
-  tree: "reference.pack_authoring.writing_reference"
+  tree: "pack_authoring.writing_reference"
   meta:
     pack:
       name: "pack-authoring"
@@ -238,7 +238,7 @@
     - Pack organization — `me_engram_get({id: "019b0001-0003-7000-8000-000000000003"})`
 
 - id: "019b0001-0003-7000-8000-000000000003"
-  tree: "reference.pack_authoring.organization"
+  tree: "pack_authoring.organization"
   meta:
     pack:
       name: "pack-authoring"
@@ -254,26 +254,25 @@
 
     Tree paths control hierarchical browsing and ltree queries. Choose paths for discoverability, not containment.
 
-    **Good**: `tools.git.history_extraction` — an agent searching for git tools finds this naturally.
+    **Good**: `git.history_extraction` — an agent searching for git topics finds this naturally.
     **Bad**: `packs.git_history.skill` — buries the content under a "packs" prefix that nobody searches for.
 
-    Pack identity comes from `meta.pack`, not the tree path. Your tree paths should reflect the content's domain, as if the engrams were hand-created rather than imported from a pack.
+    Pack identity comes from `meta.pack`, not the tree path. Content type comes from `meta.type`. Tree paths should reflect the content's domain, as if the engrams were hand-created rather than imported from a pack.
 
     ### Conventions
 
-    - **Reference content**: `reference.<domain>.<subtopic>` — e.g., `reference.postgres.vacuuming`
-    - **Skill/procedural content**: `tools.<tool>.<action>` — e.g., `tools.git.history_extraction`
+    - **Pack content**: `<domain>.<subtopic>` — e.g., `postgres.vacuuming`, `git.history_extraction`
     - **Project-specific**: `work.projects.<name>.<aspect>` — e.g., `work.projects.api.architecture`
 
-    These are conventions, not requirements. Use whatever tree structure makes your content findable for the queries people will actually run.
+    Content type (reference vs skill) is already in `meta.type`, so the tree doesn't need to encode it. These are conventions, not requirements. Use whatever tree structure makes your content findable for the queries people will actually run.
 
     ### Tree Path Rules
 
     ltree paths must match `[a-z0-9_]+` per label, separated by dots. Common mistakes:
-    - `reference.pack-authoring` — hyphens are invalid, use `pack_authoring`
-    - `reference.PostgreSQL` — uppercase is invalid, use `postgresql`
-    - `reference.` — trailing dot is invalid
-    - `reference..nested` — double dot is invalid
+    - `pack-authoring.writing` — hyphens are invalid, use `pack_authoring.writing`
+    - `PostgreSQL.vacuuming` — uppercase is invalid, use `postgresql.vacuuming`
+    - `postgres.` — trailing dot is invalid
+    - `postgres..nested` — double dot is invalid
 
     ## Meta Tagging
 
@@ -335,7 +334,7 @@
     - Writing reference engrams — `me_engram_get({id: "019b0001-0002-7000-8000-000000000002"})`
 
 - id: "019b0001-0004-7000-8000-000000000004"
-  tree: "reference.pack_authoring.id_versioning"
+  tree: "pack_authoring.id_versioning"
   meta:
     pack:
       name: "pack-authoring"
@@ -439,7 +438,7 @@
     - Quality checklist — `me_engram_get({id: "019b0001-0005-7000-8000-000000000005"})`
 
 - id: "019b0001-0005-7000-8000-000000000005"
-  tree: "reference.pack_authoring.quality"
+  tree: "pack_authoring.quality"
   meta:
     pack:
       name: "pack-authoring"
@@ -474,7 +473,7 @@
     If one engram says `version: "0.1.0"` and another says `version: "0.1"`, validation fails. Use exact string matches. Copy-paste the meta block rather than retyping it.
 
     **Tree paths with hyphens or uppercase.**
-    ltree requires `[a-z0-9_]` per label. `reference.pack-authoring` fails — use `reference.pack_authoring`. `reference.PostgreSQL` fails — use `reference.postgresql`. Validation catches invalid ltree syntax.
+    ltree requires `[a-z0-9_]` per label. `pack-authoring.writing` fails — use `pack_authoring.writing`. `PostgreSQL.vacuuming` fails — use `postgresql.vacuuming`. Validation catches invalid ltree syntax.
 
     **ID format errors.**
     The `7` at position 14 and `8` at position 19 are mandatory (UUIDv7 version + RFC 9562 variant). `019b0001-0001-0000-0000-000000000001` fails validation. Use the template: `<prefix>-NNNN-7000-8000-NNNNNNNNNNNN`.
