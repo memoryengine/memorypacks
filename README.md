@@ -10,7 +10,6 @@ Packs may contain a mix of:
 
 - **Reference knowledge** — static content that's useful immediately after import
 - **Skill instructions** — procedural content that teaches AI agents how to perform tasks
-- **Temporal context** — time-bounded information with start/end dates
 
 Memory Packs are Neo's "I know kung fu" for your agents.
 
@@ -36,37 +35,48 @@ me pack import --dry-run packs/git-history.yaml
 
 ## Pack format
 
-Each pack is a standard memory YAML file. The only required convention is `meta.pack: {name, version}` and deterministic IDs:
+Each pack is a YAML file with a top-level envelope declaring pack identity, followed by a `memories` array:
 
 ```yaml
-# Pack: example
-# Version: 0.1.0
-# ID prefix: 019b0000
+name: example_pack
+version: "0.1.0"
+description: "One-line summary of what this pack provides"
+id-prefix: "019b0000"
+format: 1
+memories:
+  - id: "019b0000-0001-7000-8000-000000000001"
+    tree: "subtopic"
+    meta:
+      type: "skill"
+    content: |
+      # Example Skill — What This Does
 
-- id: "019b0000-0001-7000-8000-000000000001"
-  tree: "tools.example.skill"
-  meta:
-    pack:
-      name: "example"
-      version: "0.1.0"
-  content: |
-    # Example Skill — What This Does
-
-    Instructions for an agent...
+      Instructions for an agent...
 ```
+
+### Envelope fields
+
+| Field | Required | Purpose |
+|-------|----------|---------|
+| `name` | Yes | ltree-safe identifier (`[a-z0-9_]+`) — used to construct tree paths at import |
+| `version` | Yes | Semantic version string (e.g., `"0.1.0"`) |
+| `description` | No | Human-readable summary |
+| `id-prefix` | Yes | 8 lowercase hex characters — all memory IDs must start with this |
+| `format` | Yes | Must be `1` |
+| `memories` | Yes | Array of memory objects |
 
 ### Conventions
 
-- **Meta**: must include `meta.pack` as an object with `name` and `version` — this is the only required convention
+- **Envelope**: declares pack identity (`name`, `version`) — individual memories do not include `meta.pack`
 - **IDs**: deterministic UUIDv7 with a fixed prefix per pack (makes re-imports idempotent)
-- **Tree**: pack authors choose tree paths for discoverability — no fixed prefix required
+- **Tree**: relative paths — auto-prefixed with `pack.<name>.` at import time
 - **Content**: non-empty, self-contained, follows [memory best practices](https://memory.build)
 
 Additional meta keys (like `type`, `topic`, etc.) are optional — add whatever makes your content discoverable and filterable.
 
 ### ID allocation
 
-Each pack claims a unique UUIDv7 prefix. Document it in a comment at the top of your file.
+Each pack claims a unique UUIDv7 prefix. Declare it in the envelope's `id-prefix` field.
 
 | Prefix | Pack |
 |--------|------|
@@ -82,11 +92,11 @@ When adding a new pack, choose the next available prefix.
 ```bash
 # First import: installs v0.1.0
 me pack import packs/git-history.yaml
-# Imported 1 memory, deleted 0 (pack: git-history@0.1.0)
+# Imported 1 memory, deleted 0 (pack: git_history@0.1.0)
 
 # After updating the file to v0.2.0:
 me pack import packs/git-history.yaml
-# Imported 2 memories, deleted 1 (pack: git-history@0.2.0)
+# Imported 2 memories, deleted 1 (pack: git_history@0.2.0)
 ```
 
 Old-version memories are automatically cleaned up. Memories that exist in both versions are updated in place (deterministic IDs).
@@ -99,17 +109,16 @@ Old-version memories are automatically cleaned up. Memories that exist in both v
 4. Submit a pull request
 
 All packs must:
-- Follow the format conventions above
+- Use the v2 envelope format (`name`, `version`, `id-prefix`, `format: 1`, `memories`)
+- Use an ltree-safe pack name (`[a-z0-9_]+` — no hyphens)
 - Use a unique ID prefix (check the table above)
-- Include a header comment with pack name, version, description, and ID prefix
 - Have non-empty, well-written content
-- Have consistent `meta.pack.name` and `meta.pack.version` across all memories
 
 ## Validation & CI
 
 Every pack is validated on push and pull request via GitHub Actions. The workflow checks:
 
-1. **Per-pack validation** — schema, IDs, meta.pack consistency
+1. **Per-pack validation** — envelope fields, schema, IDs match `id-prefix`
 2. **Cross-pack duplicate names** — no two packs may share a name
 3. **Cross-pack ID prefix collisions** — no two packs may share an ID prefix
 
