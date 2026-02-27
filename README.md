@@ -85,6 +85,14 @@ Each pack claims a unique UUIDv7 prefix. Declare it in the envelope's `id-prefix
 
 When adding a new pack, choose the next available prefix.
 
+To generate IDs for a new pack:
+
+```bash
+bun scripts/pack-uuids.ts 019b0003        # 10 IDs (default)
+bun scripts/pack-uuids.ts 019b0003 25     # 25 IDs
+bun scripts/pack-uuids.ts 019b0003 5 3    # 5 IDs starting at sequence 3
+```
+
 ## Upgrading packs
 
 `me pack import` handles version-aware upgrades automatically:
