@@ -32,6 +32,7 @@ me pack import --dry-run packs/git-history.yaml
 |------|-------------|
 | [pack-authoring](packs/pack-authoring.yaml) | How to write effective memory packs — skill memory structure, reference memory craft, organization, ID/versioning, and quality checklist |
 | [skill-to-pack](packs/skill-to-pack.yaml) | Convert Agent Skills (agentskills.io) into memory engine packs — format reference, conversion procedure, field mapping, and edge cases |
+| [codebase-index](packs/codebase-index.yaml) | Teaches agents to build a structural code index using Tree-sitter and filesystem watching — zero LLM cost, always current |
 
 ## Pack format
 
