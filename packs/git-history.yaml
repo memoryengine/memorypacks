@@ -1,0 +1,596 @@
+name: git_history
+version: "0.1.0"
+description: "Teaches agents to backfill and incrementally sync git commit history into searchable memories"
+id-prefix: "019b0005"
+format: 1
+memories:
+  - id: "019b0005-0001-7000-8000-000000000001"
+    tree: "extraction"
+    meta:
+      type: "skill"
+      topic: "git-history"
+    content: |
+      # Git History Extraction — Build a Script to Backfill & Sync Git Commits into Memory Engine
+
+      You have access to a git repository and memory engine MCP tools. This skill teaches you to build a script that backfills commit history into searchable memories and can be re-run incrementally to stay current.
+
+      ## What to Extract
+
+      Create one memory per non-trivial commit containing:
+      - SHA (short and full), author, date, commit message
+      - List of changed files with A/M/D status
+      - Optionally: diff summary or full diff
+
+      Skip:
+      - Merge commits with no unique content (auto-generated merge messages)
+      - Empty commits
+      - Commits matching configurable ignore patterns (e.g., `chore: bump version`, `Merge branch`)
+      - Commits that touch only lock files or generated artifacts
+
+      ## How to Extract
+
+      1. **Detect repo name** from `git remote get-url origin` (extract the repo name from the URL) or fall back to the directory name.
+
+      2. **Accept configuration**:
+         - `treePrefix` — optional prefix before `<repo>.git_history` (default: none)
+         - `depth` — one of `metadata`, `files` (default), `diff_summary`, `full_diff`
+         - `maxCommits` — maximum commits per run (default: 200)
+         - `pathFilters` — optional list of path globs to restrict commits
+         - `ignorePatterns` — regexes to skip matching commit subjects
+
+      3. **Incremental check** — find the latest already-imported SHA:
+         ```
+         me_memory_search({meta: {source: "git", repo: "<name>"}, limit: 1, order_by: "desc"})
+         ```
+         The `order_by: "desc"` sorts by temporal descending so the most recent commit is first. If a result exists, extract its `meta.commit` SHA.
+
+      4. **Run git log**:
+         - Full backfill: `git log --format='%H|%ae|%aI|%s' --reverse -<maxCommits>`
+         - Incremental: `git log --format='%H|%ae|%aI|%s' --reverse <last_sha>..HEAD`
+         - With path filters: append `-- <paths>`
+
+      5. **Parse each commit**: split on `|` to get SHA, author email, ISO date, subject. For body: `git log -1 --format='%b' <sha>`.
+
+      6. **Dedup check** — before creating, search for the exact commit:
+         ```
+         me_memory_search({meta: {source: "git", commit: "<sha>"}})
+         ```
+         Skip creation if a match exists.
+
+      7. **Get file list** (if depth >= `files`):
+         ```bash
+         git diff-tree --no-commit-id --name-status -r <sha>
+         ```
+
+      8. **Format content** per depth level (see schema memory: `me_memory_get({id: "019b0005-0004-7000-8000-000000000004"})`).
+
+      9. **Create memories** via `me_memory_create()` for individual commits or `me_memory_batchCreate()` for bulk. Set tree, meta, and temporal fields per the schema conventions.
+
+      ## Example Output
+
+      ```
+      me_memory_create({
+        content: "# Add rate limiting middleware\n\n**Commit**: a1b2c3d\n**Author**: dev@example.com\n**Date**: 2026-02-15T10:30:00Z\n\nImplement token-bucket rate limiter for all API endpoints.\nConfigurable per-route limits via route metadata.\n\n## Files Changed\n- A src/middleware/rate-limit.ts\n- M src/server/routes.ts\n- M src/config.ts\n- A src/middleware/rate-limit.test.ts",
+        tree: "my_api.git_history",
+        meta: {
+          source: "git",
+          repo: "my_api",
+          commit: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+          author: "dev@example.com",
+          branch: "refs/heads/main"
+        },
+        temporal: {start: "2026-02-15T10:30:00Z"}
+      })
+      ```
+
+      ## Scope Control
+
+      - Default: 200 commits per run. Pass `maxCommits` to override.
+      - Incremental mode processes only new commits since the last import — re-running is cheap.
+      - For initial backfill of large repos, run in batches: `maxCommits=200`, then re-run incrementally.
+      - Configurable path filters and ignore patterns prevent noise.
+
+      ## See Also
+      - TypeScript skeleton — `me_memory_get({id: "019b0005-0002-7000-8000-000000000002"})`
+      - Pseudocode & CLI fallback — `me_memory_get({id: "019b0005-0003-7000-8000-000000000003"})`
+      - Memory schema conventions — `me_memory_get({id: "019b0005-0004-7000-8000-000000000004"})`
+
+  - id: "019b0005-0002-7000-8000-000000000002"
+    tree: "typescript_skeleton"
+    meta:
+      type: "reference"
+      topic: "git-history-typescript"
+    content: |
+      # TypeScript Script Skeleton — Git History Extraction
+
+      Annotated reference implementation for building a git history extraction script. Adapt to your project's setup and me server configuration.
+
+      ## Dependencies
+
+      ```typescript
+      import { $ } from "bun";
+      ```
+
+      Uses `Bun.$` for shell commands and direct MCP tool calls (or `@memoryengine/client`) for memory operations.
+
+      ## Script
+
+      ```typescript
+      #!/usr/bin/env bun
+
+      // --- Configuration ---
+      type Depth = "metadata" | "files" | "diff_summary" | "full_diff";
+
+      interface Config {
+        repo: string;           // Detected or provided repo name
+        treePrefix?: string;    // Optional prefix: "work.projects"
+        depth: Depth;           // Default: "files"
+        maxCommits: number;     // Default: 200
+        pathFilters: string[];  // Restrict to these paths
+        ignorePatterns: RegExp[]; // Skip commits matching these
+      }
+
+      // --- Detect repo name ---
+      async function detectRepo(): Promise<string> {
+        try {
+          const url = (await $`git remote get-url origin`.text()).trim();
+          // Extract repo name from URL: git@github.com:org/repo.git -> repo
+          const match = url.match(/\/([^/]+?)(?:\.git)?$/);
+          return match ? match[1].replace(/-/g, "_") : "unknown";
+        } catch {
+          // Fall back to directory name
+          const dir = (await $`basename $(pwd)`.text()).trim();
+          return dir.replace(/-/g, "_");
+        }
+      }
+
+      // --- Parse CLI args ---
+      function parseArgs(): Partial<Config> {
+        const args = process.argv.slice(2);
+        const config: Partial<Config> = {};
+        for (let i = 0; i < args.length; i++) {
+          switch (args[i]) {
+            case "--repo": config.repo = args[++i]; break;
+            case "--prefix": config.treePrefix = args[++i]; break;
+            case "--depth": config.depth = args[++i] as Depth; break;
+            case "--max": config.maxCommits = parseInt(args[++i]); break;
+            case "--path": config.pathFilters = (config.pathFilters ?? []).concat(args[++i]); break;
+          }
+        }
+        return config;
+      }
+
+      // --- Find last imported SHA (incremental mode) ---
+      async function findLastSha(repo: string): Promise<string | null> {
+        const results = await me.memory.search({
+          meta: { source: "git", repo },
+          limit: 1,
+          order_by: "desc",
+        });
+        return results.length > 0 ? results[0].meta.commit : null;
+      }
+
+      // --- Fetch commits from git log ---
+      async function fetchCommits(
+        lastSha: string | null,
+        maxCommits: number,
+        pathFilters: string[]
+      ): Promise<Array<{ sha: string; author: string; date: string; subject: string }>> {
+        const range = lastSha ? `${lastSha}..HEAD` : `HEAD`;
+        const pathArgs = pathFilters.length > 0 ? `-- ${pathFilters.join(" ")}` : "";
+        const format = "%H|%ae|%aI|%s";
+
+        const cmd = lastSha
+          ? `git log --format='${format}' --reverse ${lastSha}..HEAD -${maxCommits} ${pathArgs}`
+          : `git log --format='${format}' --reverse -${maxCommits} ${pathArgs}`;
+
+        const output = (await $`sh -c ${cmd}`.text()).trim();
+        if (!output) return [];
+
+        return output.split("\n").map(line => {
+          const [sha, author, date, ...rest] = line.split("|");
+          return { sha, author, date, subject: rest.join("|") };
+        });
+      }
+
+      // --- Get changed files for a commit ---
+      async function getChangedFiles(sha: string): Promise<string[]> {
+        const output = (await $`git diff-tree --no-commit-id --name-status -r ${sha}`.text()).trim();
+        return output ? output.split("\n") : [];
+      }
+
+      // --- Format memory content ---
+      function formatContent(
+        commit: { sha: string; author: string; date: string; subject: string },
+        body: string,
+        files: string[],
+        depth: Depth
+      ): string {
+        const short = commit.sha.slice(0, 7);
+        let content = `# ${commit.subject}\n\n`;
+        content += `**Commit**: ${short}\n`;
+        content += `**Author**: ${commit.author}\n`;
+        content += `**Date**: ${commit.date}\n`;
+
+        if (body.trim()) content += `\n${body.trim()}\n`;
+        if (depth !== "metadata" && files.length > 0) {
+          content += `\n## Files Changed\n`;
+          for (const f of files) content += `- ${f}\n`;
+        }
+        return content;
+      }
+
+      // --- Main ---
+      async function main() {
+        const args = parseArgs();
+        const repo = args.repo ?? await detectRepo();
+        const config: Config = {
+          repo,
+          treePrefix: args.treePrefix,
+          depth: args.depth ?? "files",
+          maxCommits: args.maxCommits ?? 200,
+          pathFilters: args.pathFilters ?? [],
+          ignorePatterns: [/^Merge branch/, /^Merge pull request/, /^chore: bump/],
+        };
+
+        const treePath = config.treePrefix
+          ? `${config.treePrefix}.${repo}.git_history`
+          : `${repo}.git_history`;
+
+        console.log(`Repo: ${repo} | Tree: ${treePath} | Depth: ${config.depth}`);
+
+        // Incremental check
+        const lastSha = await findLastSha(repo);
+        if (lastSha) console.log(`Incremental from: ${lastSha.slice(0, 7)}`);
+        else console.log("Full backfill mode");
+
+        const commits = await fetchCommits(lastSha, config.maxCommits, config.pathFilters);
+        console.log(`Found ${commits.length} commits to process`);
+
+        let created = 0;
+        let skipped = 0;
+
+        for (const commit of commits) {
+          // Skip ignored patterns
+          if (config.ignorePatterns.some(p => p.test(commit.subject))) {
+            skipped++;
+            continue;
+          }
+
+          // Dedup check
+          const existing = await me.memory.search({ meta: { source: "git", commit: commit.sha } });
+          if (existing.length > 0) { skipped++; continue; }
+
+          // Get additional data based on depth
+          const body = (await $`git log -1 --format='%b' ${commit.sha}`.text()).trim();
+          const files = config.depth !== "metadata" ? await getChangedFiles(commit.sha) : [];
+
+          const content = formatContent(commit, body, files, config.depth);
+
+          await me.memory.create({
+            content,
+            tree: treePath,
+            meta: {
+              source: "git",
+              repo,
+              commit: commit.sha,
+              author: commit.author,
+              branch: "refs/heads/main",
+            },
+            temporal: { start: commit.date },
+          });
+
+          created++;
+          if (created % 25 === 0) console.log(`Progress: ${created} created, ${skipped} skipped`);
+        }
+
+        console.log(`Done: ${created} created, ${skipped} skipped`);
+      }
+
+      main();
+      ```
+
+      ## Adapting This Skeleton
+
+      - Replace `me.memory.search` / `me.memory.create` with your actual client calls (MCP tools, REST API, or `@memoryengine/client`)
+      - Add `diff_summary` and `full_diff` depth support by extending `formatContent`
+      - For `diff_summary`: `git diff-tree --stat <sha>`
+      - For `full_diff`: `git diff-tree -p <sha>` (warning: may exceed token limits)
+      - Add batch creation for better throughput on large backfills
+
+      ## See Also
+      - Extraction skill — `me_memory_get({id: "019b0005-0001-7000-8000-000000000001"})`
+      - Pseudocode & CLI fallback — `me_memory_get({id: "019b0005-0003-7000-8000-000000000003"})`
+      - Memory schema conventions — `me_memory_get({id: "019b0005-0004-7000-8000-000000000004"})`
+
+  - id: "019b0005-0003-7000-8000-000000000003"
+    tree: "pseudocode"
+    meta:
+      type: "reference"
+      topic: "git-history-pseudocode"
+    content: |
+      # Pseudocode & CLI Fallback — Git History Extraction
+
+      Language-agnostic algorithm and equivalent `me` CLI commands for extracting git history into memory engine. Use this when building in Python, Go, shell script, or any language without a TypeScript runtime.
+
+      ## Algorithm Pseudocode
+
+      ```
+      function extract_git_history(config):
+          repo = detect_repo_name()
+          tree = build_tree_path(config.prefix, repo)
+
+          # Step 1: Incremental check
+          last_sha = null
+          results = me.memory.search(meta={source: "git", repo: repo}, limit=1, order_by="desc")
+          if results is not empty:
+              last_sha = results[0].meta.commit
+
+          # Step 2: Fetch commits
+          if last_sha:
+              commits = git_log(range=last_sha + "..HEAD", max=config.max_commits)
+          else:
+              commits = git_log(max=config.max_commits)
+
+          # Step 3: Process each commit
+          for commit in commits:
+              # Skip ignored patterns
+              if any(pattern.matches(commit.subject) for pattern in config.ignore):
+                  continue
+
+              # Dedup check
+              existing = me.memory.search(meta={source: "git", commit: commit.sha})
+              if existing is not empty:
+                  continue
+
+              # Build content
+              content = format_commit(commit, config.depth)
+
+              # Create memory
+              me.memory.create(
+                  content=content,
+                  tree=tree,
+                  meta={
+                      source: "git",
+                      repo: repo,
+                      commit: commit.sha,
+                      author: commit.author,
+                      branch: commit.branch
+                  },
+                  temporal={start: commit.date}
+              )
+      ```
+
+      ## Equivalent `me` CLI Commands
+
+      ### Incremental Check — Find Last Imported SHA
+
+      ```bash
+      me memory search \
+        --meta '{"source": "git", "repo": "my_api"}' \
+        --order-by desc \
+        --limit 1
+      ```
+
+      Parse the JSON output to extract `meta.commit` from the first result.
+
+      ### Dedup Check — Does This Commit Exist?
+
+      ```bash
+      me memory search \
+        --meta '{"source": "git", "commit": "a1b2c3d4e5f6..."}' \
+        --limit 1
+      ```
+
+      If output contains results, skip this commit.
+
+      ### Create a Memory
+
+      ```bash
+      me memory create \
+        --content "$(cat <<'CONTENT'
+      # Add rate limiting middleware
+
+      **Commit**: a1b2c3d
+      **Author**: dev@example.com
+      **Date**: 2026-02-15T10:30:00Z
+
+      ## Files Changed
+      - A src/middleware/rate-limit.ts
+      - M src/server/routes.ts
+      CONTENT
+      )" \
+        --tree "my_api.git_history" \
+        --meta '{"source": "git", "repo": "my_api", "commit": "a1b2c3d4...", "author": "dev@example.com", "branch": "refs/heads/main"}' \
+        --temporal '{"start": "2026-02-15T10:30:00Z"}'
+      ```
+
+      ### Shell Script Loop
+
+      ```bash
+      #!/bin/bash
+      REPO="my_api"
+      TREE="${REPO}.git_history"
+      MAX=200
+
+      # Get last imported SHA
+      LAST_SHA=$(me memory search --meta "{\"source\":\"git\",\"repo\":\"${REPO}\"}" --order-by desc --limit 1 \
+        | jq -r '.[0].meta.commit // empty')
+
+      # Build git log range
+      if [ -n "$LAST_SHA" ]; then
+        RANGE="${LAST_SHA}..HEAD"
+      else
+        RANGE="HEAD"
+      fi
+
+      # Process commits
+      git log --format='%H|%ae|%aI|%s' --reverse -${MAX} ${RANGE} | while IFS='|' read SHA AUTHOR DATE SUBJECT; do
+        # Skip merge commits
+        echo "$SUBJECT" | grep -qE '^Merge (branch|pull request)' && continue
+
+        # Dedup check
+        EXISTING=$(me memory search --meta "{\"source\":\"git\",\"commit\":\"${SHA}\"}" --limit 1 | jq length)
+        [ "$EXISTING" -gt 0 ] && continue
+
+        # Get changed files
+        FILES=$(git diff-tree --no-commit-id --name-status -r "$SHA" | sed 's/^/- /')
+
+        # Create memory
+        CONTENT="# ${SUBJECT}
+
+      **Commit**: ${SHA:0:7}
+      **Author**: ${AUTHOR}
+      **Date**: ${DATE}
+
+      ## Files Changed
+      ${FILES}"
+
+        me memory create \
+          --content "$CONTENT" \
+          --tree "$TREE" \
+          --meta "{\"source\":\"git\",\"repo\":\"${REPO}\",\"commit\":\"${SHA}\",\"author\":\"${AUTHOR}\",\"branch\":\"refs/heads/main\"}" \
+          --temporal "{\"start\":\"${DATE}\"}"
+      done
+      ```
+
+      ## Python Equivalent
+
+      Use `subprocess.run()` for git commands and `requests` or the me Python client for memory operations. The algorithm is identical — only the syntax changes.
+
+      ## See Also
+      - Extraction skill — `me_memory_get({id: "019b0005-0001-7000-8000-000000000001"})`
+      - TypeScript skeleton — `me_memory_get({id: "019b0005-0002-7000-8000-000000000002"})`
+      - Memory schema conventions — `me_memory_get({id: "019b0005-0004-7000-8000-000000000004"})`
+
+  - id: "019b0005-0004-7000-8000-000000000004"
+    tree: "schema"
+    meta:
+      type: "reference"
+      topic: "git-history-schema"
+    content: |
+      # Memory Schema Conventions — Git History
+
+      Exact conventions for git commit memories created by the git history extraction skill. Follow these to ensure consistency, searchability, and interoperability.
+
+      ## Tree Path
+
+      Format: `<optional_prefix>.<repo_name>.git_history`
+
+      | Configuration | Tree Path |
+      |--------------|-----------|
+      | Default (no prefix) | `my_api.git_history` |
+      | With prefix | `work.projects.my_api.git_history` |
+
+      The repo name must be ltree-safe: lowercase, underscores only. Convert hyphens to underscores (`my-api` → `my_api`).
+
+      ## Meta Fields
+
+      ```json
+      {
+        "source": "git",
+        "repo": "<repo_name>",
+        "commit": "<full_40_char_sha>",
+        "author": "<author_email>",
+        "branch": "<branch_ref>"
+      }
+      ```
+
+      | Field | Type | Required | Purpose |
+      |-------|------|----------|---------|
+      | `source` | string | Yes | Always `"git"` — enables filtering all git-sourced memories |
+      | `repo` | string | Yes | ltree-safe repo name — scopes searches to one repo |
+      | `commit` | string | Yes | Full 40-character SHA — unique key for dedup |
+      | `author` | string | Yes | Author email — enables per-author queries |
+      | `branch` | string | No | Branch ref (e.g., `refs/heads/main`) — useful for multi-branch imports |
+
+      ## Temporal
+
+      ```json
+      {"start": "<commit_author_date_iso>"}
+      ```
+
+      Point-in-time only (no `end` date). Uses the commit's author date in ISO 8601 format. This enables temporal range queries like "what changed last week."
+
+      ## Content Template — Depth Levels
+
+      ### `metadata` — Minimal
+
+      ```markdown
+      # <commit_subject>
+
+      **Commit**: <sha_short>
+      **Author**: <author_email>
+      **Date**: <iso_date>
+
+      <commit_body_if_present>
+      ```
+
+      ### `files` — Default
+
+      ```markdown
+      # <commit_subject>
+
+      **Commit**: <sha_short>
+      **Author**: <author_email>
+      **Date**: <iso_date>
+
+      <commit_body_if_present>
+
+      ## Files Changed
+      - M src/auth.ts
+      - A src/middleware/rate-limit.ts
+      - D src/legacy/old-auth.ts
+      ```
+
+      File status prefixes: `A` (added), `M` (modified), `D` (deleted), `R` (renamed).
+
+      ### `diff_summary` — With Stats
+
+      Adds insertion/deletion counts per file after the file list:
+
+      ```markdown
+      ## Files Changed
+      - M src/auth.ts
+      - A src/middleware/rate-limit.ts
+
+      ## Diff Summary
+       src/auth.ts                    | 12 +++---
+       src/middleware/rate-limit.ts    | 45 ++++++++++++
+       2 files changed, 45 insertions(+), 12 deletions(-)
+      ```
+
+      Generated via `git diff-tree --stat <sha>`.
+
+      ### `full_diff` — Complete Diff
+
+      Appends the full patch output after the diff summary. Use with caution — large diffs may exceed embedding token limits (8192 tokens). Generated via `git diff-tree -p <sha>`.
+
+      ## Search Patterns
+
+      Common queries agents run against git history memories:
+
+      ```
+      # All commits in a repo
+      me_memory_search({meta: {source: "git", repo: "my_api"}})
+
+      # Commits by a specific author
+      me_memory_search({meta: {source: "git", repo: "my_api", author: "dev@example.com"}})
+
+      # Semantic search for what changed
+      me_memory_search({semantic: "rate limiting implementation", meta: {source: "git"}})
+
+      # Keyword search for specific files
+      me_memory_search({fulltext: "rate-limit.ts", meta: {source: "git"}})
+
+      # Temporal range — what changed last week
+      me_memory_search({
+        meta: {source: "git", repo: "my_api"},
+        temporal: {overlaps: ["2026-02-24T00:00:00Z", "2026-03-03T00:00:00Z"]}
+      })
+      ```
+
+      ## See Also
+      - Extraction skill — `me_memory_get({id: "019b0005-0001-7000-8000-000000000001"})`
+      - TypeScript skeleton — `me_memory_get({id: "019b0005-0002-7000-8000-000000000002"})`
+      - Pseudocode & CLI fallback — `me_memory_get({id: "019b0005-0003-7000-8000-000000000003"})`
