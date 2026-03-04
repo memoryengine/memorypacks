@@ -1,0 +1,688 @@
+name: github_content
+version: "0.1.0"
+description: "Extract GitHub issues, PRs, and releases into memory engine using the gh CLI"
+id-prefix: "019b0006"
+format: 1
+memories:
+  - id: "019b0006-0001-7000-8000-000000000001"
+    tree: "extraction"
+    meta:
+      type: "skill"
+      topic: "github-content"
+    content: |
+      # GitHub Content Extraction — Issues, PRs, and Releases
+
+      You have access to memory engine MCP tools and a GitHub repository. This skill teaches you to extract GitHub issues, pull requests, and releases into memory engine for semantic search, temporal queries, and cross-referencing with code.
+
+      ## Prerequisites
+
+      1. **me server running** with embedding daemon active
+      2. **`gh` CLI** authenticated (`gh auth status` must succeed)
+      3. **Repository context** — run from a directory with a GitHub remote, or specify `--repo owner/repo`
+
+      ## What It Does
+
+      Fetches structured data from GitHub's API via the `gh` CLI, transforms each issue, PR, and release into a memory with rich metadata, and stores them in memory engine. The embedding pipeline handles semantic search automatically.
+
+      ## Configuration Options
+
+      | Option | Default | Description |
+      |--------|---------|-------------|
+      | `treePrefix` | `<repo_name>` | ltree-safe project name (e.g., `my_project`) |
+      | `entityTypes` | `["issues", "prs", "releases"]` | Which entity types to extract |
+      | `maxItems` | `100` | Maximum items per entity type per run |
+      | `state` | `"all"` | Filter: `open`, `closed`, `merged`, `all` |
+      | `labelFilters` | `[]` | Only include items with these labels (empty = all) |
+      | `since` | `null` | ISO date — only items updated after this date |
+
+      ## Step 1: Detect Repository
+
+      ```bash
+      gh repo view --json nameWithOwner,name -q '.nameWithOwner'
+      ```
+
+      This gives you `owner/repo` for `meta.repo` and the repo name for tree paths. Convert the repo name to ltree-safe format (lowercase, replace hyphens with underscores).
+
+      ## Step 2: Check for Existing Memories (Incremental)
+
+      Before fetching, find the most recent memory for each entity type:
+
+      ```
+      me_memory_search({
+        tree: "<treePrefix>.github.issues",
+        meta: {source: "github"},
+        limit: 1
+      })
+      ```
+
+      If results exist, use the most recent `temporal.start` as the `--since` parameter to fetch only new/updated items.
+
+      ## Step 3: Fetch and Transform
+
+      For each entity type, fetch from GitHub, filter, and create memories:
+
+      **Issues:**
+      - Fetch: `gh issue list --state all --limit 100 --json number,title,body,author,state,labels,createdAt,closedAt,comments`
+      - Skip: bot-created issues (author login ends with `[bot]` or is `dependabot`)
+      - Skip: issues with 0-length body and 0 comments (empty issues)
+
+      **Pull Requests:**
+      - Fetch: `gh pr list --state all --limit 100 --json number,title,body,author,state,labels,createdAt,closedAt,mergedAt,comments,reviewDecision`
+      - Skip: dependabot PRs, draft PRs with no comments
+      - Include: `reviewDecision` (APPROVED, CHANGES_REQUESTED, etc.)
+
+      **Releases:**
+      - Fetch: `gh release list --limit 100 --json tagName,name,body,author,createdAt,isDraft,isPrerelease`
+      - Skip: draft releases, releases with empty body
+
+      ## Step 4: Condense Comments
+
+      For issues and PRs with many comments, condense to stay under the ~8192 token embedding limit:
+
+      - **≤5 comments**: include all verbatim
+      - **>5 comments**: include first comment, last comment, and any comments from maintainers/the author
+      - Add a note: `[... N comments condensed ...]`
+
+      ## Step 5: Deduplicate
+
+      Before creating, check if a memory already exists:
+
+      ```
+      me_memory_search({
+        meta: {source: "github", repo: "owner/repo", entity_type: "issue", number: 42}
+      })
+      ```
+
+      If found, compare content. If changed, update with `me_memory_update`. If identical, skip.
+
+      ## Step 6: Create Memories
+
+      For each item, create a memory using the schema conventions (see `me_memory_get({id: "019b0006-0002-7000-8000-000000000002"})`).
+
+      Batch in groups of 50. Log progress: `[issues] 42/100 created, 8 skipped (bot), 3 updated`.
+
+      ## Scope Limits
+
+      - **100 items per entity type** per run, **300 total max**
+      - For repos with >1000 items, use `--since` for incremental runs
+      - If an issue/PR body exceeds 4000 characters, truncate with `[... truncated ...]`
+
+      ## See Also
+      - Schema conventions — `me_memory_get({id: "019b0006-0002-7000-8000-000000000002"})`
+      - Pseudocode & CLI — `me_memory_get({id: "019b0006-0003-7000-8000-000000000003"})`
+      - gh CLI reference — `me_memory_get({id: "019b0006-0004-7000-8000-000000000004"})`
+
+  - id: "019b0006-0002-7000-8000-000000000002"
+    tree: "schema"
+    meta:
+      type: "reference"
+      topic: "github-content-schema"
+    content: |
+      # Schema Conventions — GitHub Content Memories
+
+      This reference defines tree paths, meta fields, temporal mapping, and content templates for GitHub issues, PRs, and releases stored in memory engine.
+
+      ## Tree Paths
+
+      All GitHub content lives under `<treePrefix>.github.<entity_type>`:
+
+      | Entity | Tree Path |
+      |--------|-----------|
+      | Issues | `<treePrefix>.github.issues` |
+      | Pull Requests | `<treePrefix>.github.prs` |
+      | Releases | `<treePrefix>.github.releases` |
+
+      Example: issue #42 in repo `my_project` → tree: `my_project.github.issues`
+
+      All memories for one entity type share the same tree path. Individual items are distinguished by `meta.number` (or `meta.tag` for releases).
+
+      ## Meta Fields
+
+      ### Common Fields (all entity types)
+
+      | Field | Type | Required | Description |
+      |-------|------|----------|-------------|
+      | `source` | string | Yes | Always `"github"` |
+      | `repo` | string | Yes | `"owner/repo"` format (e.g., `"timescale/pg_textsearch"`) |
+      | `entity_type` | string | Yes | `"issue"`, `"pr"`, or `"release"` |
+      | `author` | string | Yes | GitHub login of the creator |
+
+      ### Issues and PRs
+
+      | Field | Type | Required | Description |
+      |-------|------|----------|-------------|
+      | `number` | number | Yes | Issue/PR number (e.g., `42`) |
+      | `state` | string | Yes | `"open"`, `"closed"`, or `"merged"` (PRs only) |
+      | `labels` | array | No | Label names as strings (e.g., `["bug", "p1"]`) |
+
+      ### Releases
+
+      | Field | Type | Required | Description |
+      |-------|------|----------|-------------|
+      | `tag` | string | Yes | Release tag (e.g., `"v1.2.3"`) |
+      | `prerelease` | boolean | No | `true` if pre-release |
+
+      ## Temporal Mapping
+
+      | Entity State | `temporal.start` | `temporal.end` |
+      |-------------|-------------------|----------------|
+      | Open issue/PR | `createdAt` | *(omitted)* |
+      | Closed issue | `createdAt` | `closedAt` |
+      | Merged PR | `createdAt` | `mergedAt` |
+      | Closed PR (not merged) | `createdAt` | `closedAt` |
+      | Release | `createdAt` | *(omitted)* |
+
+      Temporal ranges enable queries like:
+      - "issues resolved last week" → `temporal: {within: ["2025-01-20", "2025-01-27"]}`
+      - "PRs open during the outage" → `temporal: {contains: "2025-01-15T03:00:00Z"}`
+
+      ## Content Templates
+
+      ### Issue
+
+      ```
+      ## Issue #<number>: <title>
+
+      Repo: <owner/repo>
+      State: <open|closed>
+      Author: @<login>
+      Labels: <label1>, <label2>
+      Created: <date>
+      Closed: <date> (if closed)
+
+      <body — truncated to 4000 chars if needed>
+
+      ### Comments (<count> total)
+
+      **@<author>** (<date>):
+      <comment body>
+
+      [... N comments condensed ...]
+      ```
+
+      ### Pull Request
+
+      ```
+      ## PR #<number>: <title>
+
+      Repo: <owner/repo>
+      State: <open|closed|merged>
+      Author: @<login>
+      Labels: <label1>, <label2>
+      Review: <APPROVED|CHANGES_REQUESTED|REVIEW_REQUIRED|none>
+      Created: <date>
+      Merged: <date> (if merged) | Closed: <date> (if closed)
+
+      <body — truncated to 4000 chars if needed>
+
+      ### Comments (<count> total)
+
+      **@<author>** (<date>):
+      <comment body>
+
+      [... N comments condensed ...]
+      ```
+
+      ### Release
+
+      ```
+      ## Release <tag>: <name>
+
+      Repo: <owner/repo>
+      Author: @<login>
+      Pre-release: <yes|no>
+      Created: <date>
+
+      <body — release notes>
+      ```
+
+      ## Search Patterns
+
+      **Find a specific issue by number:**
+      ```
+      me_memory_search({meta: {source: "github", repo: "owner/repo", entity_type: "issue", number: 42}})
+      ```
+
+      **Find all open bugs:**
+      ```
+      me_memory_search({meta: {source: "github", entity_type: "issue", state: "open", labels: ["bug"]}})
+      ```
+
+      **Find PRs by concept:**
+      ```
+      me_memory_search({semantic: "authentication refactor", meta: {source: "github", entity_type: "pr"}})
+      ```
+
+      **Find releases by tag:**
+      ```
+      me_memory_search({meta: {source: "github", entity_type: "release", tag: "v1.2.3"}})
+      ```
+
+      **Issues resolved in a time range:**
+      ```
+      me_memory_search({
+        meta: {source: "github", entity_type: "issue", state: "closed"},
+        temporal: {within: ["2025-01-01", "2025-02-01"]}
+      })
+      ```
+
+      **Browse all GitHub content for a repo:**
+      ```
+      me_memory_search({tree: "my_project.github.*", meta: {source: "github"}})
+      ```
+
+      ## Interop with git_history
+
+      The `git_history` pack stores commit memories under `<treePrefix>.git`. GitHub content lives under `<treePrefix>.github`. Both use the same `treePrefix`, enabling combined queries:
+
+      ```
+      me_memory_search({tree: "my_project.*", semantic: "fix authentication bug"})
+      ```
+
+      **Note on repo identification:** `git_history` uses `meta.repo` as a plain repo name (e.g., `"my_project"`), while `github_content` uses `owner/repo` format (e.g., `"timescale/my_project"`). This distinction is intentional — GitHub content needs the owner to distinguish forks and enable cross-org queries. When joining data across packs, match on `treePrefix` rather than `meta.repo`.
+
+  - id: "019b0006-0003-7000-8000-000000000003"
+    tree: "pseudocode"
+    meta:
+      type: "reference"
+      topic: "github-content-pseudocode"
+    content: |
+      # Pseudocode & CLI — GitHub Content Extraction
+
+      Language-agnostic algorithm and ready-to-use shell scripts for extracting GitHub content into memory engine.
+
+      ## Algorithm
+
+      ```
+      function extractGitHubContent(config):
+          repo = detectRepo()                          # gh repo view
+          treePrefix = toLtree(repo.name)              # lowercase, hyphens→underscores
+
+          for entityType in config.entityTypes:
+              since = findLatestMemory(treePrefix, entityType)
+              items = fetchFromGitHub(entityType, config, since)
+              items = filterBots(items)
+              items = filterEmpty(items, entityType)
+
+              for item in items:
+                  content = formatContent(item, entityType)  # apply template
+                  meta = buildMeta(item, entityType, repo)
+                  temporal = buildTemporal(item)
+
+                  existing = findExisting(meta)
+                  if existing and existing.content == content:
+                      skip                                    # no change
+                  else if existing:
+                      me_memory_update(existing.id, content, meta, temporal)
+                  else:
+                      me_memory_create(content, tree, meta, temporal)
+      ```
+
+      ## Shell Script: Extract Issues
+
+      ```bash
+      #!/bin/bash
+      set -euo pipefail
+
+      REPO=$(gh repo view --json nameWithOwner -q '.nameWithOwner')
+      REPO_NAME=$(echo "$REPO" | cut -d'/' -f2 | tr '-' '_' | tr '[:upper:]' '[:lower:]')
+      TREE="${REPO_NAME}.github.issues"
+      LIMIT=${MAX_ITEMS:-100}
+      SINCE=${SINCE:-""}
+
+      SINCE_FLAG=""
+      if [ -n "$SINCE" ]; then
+          SINCE_FLAG="--search \"updated:>=${SINCE}\""
+      fi
+
+      gh issue list --state all --limit "$LIMIT" --json \
+          number,title,body,author,state,labels,createdAt,closedAt,comments \
+          | jq -c '.[]' | while read -r item; do
+
+          NUMBER=$(echo "$item" | jq -r '.number')
+          AUTHOR=$(echo "$item" | jq -r '.author.login')
+          STATE=$(echo "$item" | jq -r '.state')
+          TITLE=$(echo "$item" | jq -r '.title')
+          BODY=$(echo "$item" | jq -r '.body // "" | .[0:4000]')
+          LABELS=$(echo "$item" | jq -r '[.labels[].name] | join(", ")')
+          CREATED=$(echo "$item" | jq -r '.createdAt')
+          CLOSED=$(echo "$item" | jq -r '.closedAt // empty')
+          COMMENT_COUNT=$(echo "$item" | jq '.comments | length')
+
+          # Skip bots
+          if [[ "$AUTHOR" == *"[bot]" ]] || [[ "$AUTHOR" == "dependabot" ]]; then
+              continue
+          fi
+
+          # Skip empty issues
+          if [ -z "$BODY" ] && [ "$COMMENT_COUNT" -eq 0 ]; then
+              continue
+          fi
+
+          # Build content
+          CONTENT="## Issue #${NUMBER}: ${TITLE}\n\n"
+          CONTENT+="Repo: ${REPO}\nState: ${STATE}\nAuthor: @${AUTHOR}\n"
+          [ -n "$LABELS" ] && CONTENT+="Labels: ${LABELS}\n"
+          CONTENT+="Created: ${CREATED}\n"
+          [ -n "$CLOSED" ] && CONTENT+="Closed: ${CLOSED}\n"
+          CONTENT+="\n${BODY}"
+
+          # Build temporal
+          TEMPORAL_START="$CREATED"
+          TEMPORAL_END=""
+          [ -n "$CLOSED" ] && TEMPORAL_END="$CLOSED"
+
+          # Create/update via me CLI
+          EXISTING=$(me search --meta "{\"source\":\"github\",\"repo\":\"${REPO}\",\"entity_type\":\"issue\",\"number\":${NUMBER}}" --limit 1 --format json 2>/dev/null || echo "")
+
+          if [ -n "$EXISTING" ] && [ "$EXISTING" != "[]" ]; then
+              EXISTING_ID=$(echo "$EXISTING" | jq -r '.[0].id')
+              me update "$EXISTING_ID" --content "$(echo -e "$CONTENT")" \
+                  --meta "{\"source\":\"github\",\"repo\":\"${REPO}\",\"entity_type\":\"issue\",\"number\":${NUMBER},\"author\":\"${AUTHOR}\",\"state\":\"${STATE}\"}"
+          else
+              TEMPORAL_FLAG="--temporal-start ${TEMPORAL_START}"
+              [ -n "$TEMPORAL_END" ] && TEMPORAL_FLAG+=" --temporal-end ${TEMPORAL_END}"
+              me create --tree "$TREE" --content "$(echo -e "$CONTENT")" \
+                  --meta "{\"source\":\"github\",\"repo\":\"${REPO}\",\"entity_type\":\"issue\",\"number\":${NUMBER},\"author\":\"${AUTHOR}\",\"state\":\"${STATE}\"}" \
+                  $TEMPORAL_FLAG
+          fi
+      done
+      ```
+
+      ## Shell Script: Extract PRs
+
+      ```bash
+      #!/bin/bash
+      set -euo pipefail
+
+      REPO=$(gh repo view --json nameWithOwner -q '.nameWithOwner')
+      REPO_NAME=$(echo "$REPO" | cut -d'/' -f2 | tr '-' '_' | tr '[:upper:]' '[:lower:]')
+      TREE="${REPO_NAME}.github.prs"
+      LIMIT=${MAX_ITEMS:-100}
+
+      gh pr list --state all --limit "$LIMIT" --json \
+          number,title,body,author,state,labels,createdAt,closedAt,mergedAt,comments,reviewDecision \
+          | jq -c '.[]' | while read -r item; do
+
+          NUMBER=$(echo "$item" | jq -r '.number')
+          AUTHOR=$(echo "$item" | jq -r '.author.login')
+          TITLE=$(echo "$item" | jq -r '.title')
+          BODY=$(echo "$item" | jq -r '.body // "" | .[0:4000]')
+          CREATED=$(echo "$item" | jq -r '.createdAt')
+          MERGED=$(echo "$item" | jq -r '.mergedAt // empty')
+          CLOSED=$(echo "$item" | jq -r '.closedAt // empty')
+          REVIEW=$(echo "$item" | jq -r '.reviewDecision // "none"')
+
+          # Skip bots
+          if [[ "$AUTHOR" == *"[bot]" ]] || [[ "$AUTHOR" == "dependabot" ]]; then
+              continue
+          fi
+
+          # Determine state
+          if [ -n "$MERGED" ]; then
+              STATE="merged"
+              TEMPORAL_END="$MERGED"
+          elif [ -n "$CLOSED" ]; then
+              STATE="closed"
+              TEMPORAL_END="$CLOSED"
+          else
+              STATE="open"
+              TEMPORAL_END=""
+          fi
+
+          CONTENT="## PR #${NUMBER}: ${TITLE}\n\n"
+          CONTENT+="Repo: ${REPO}\nState: ${STATE}\nAuthor: @${AUTHOR}\n"
+          CONTENT+="Review: ${REVIEW}\nCreated: ${CREATED}\n"
+          [ -n "$MERGED" ] && CONTENT+="Merged: ${MERGED}\n"
+          [ -n "$CLOSED" ] && [ -z "$MERGED" ] && CONTENT+="Closed: ${CLOSED}\n"
+          CONTENT+="\n${BODY}"
+
+          TEMPORAL_FLAG="--temporal-start ${CREATED}"
+          [ -n "$TEMPORAL_END" ] && TEMPORAL_FLAG+=" --temporal-end ${TEMPORAL_END}"
+
+          EXISTING=$(me search --meta "{\"source\":\"github\",\"repo\":\"${REPO}\",\"entity_type\":\"pr\",\"number\":${NUMBER}}" --limit 1 --format json 2>/dev/null || echo "")
+
+          if [ -n "$EXISTING" ] && [ "$EXISTING" != "[]" ]; then
+              EXISTING_ID=$(echo "$EXISTING" | jq -r '.[0].id')
+              me update "$EXISTING_ID" --content "$(echo -e "$CONTENT")" \
+                  --meta "{\"source\":\"github\",\"repo\":\"${REPO}\",\"entity_type\":\"pr\",\"number\":${NUMBER},\"author\":\"${AUTHOR}\",\"state\":\"${STATE}\"}"
+          else
+              me create --tree "$TREE" --content "$(echo -e "$CONTENT")" \
+                  --meta "{\"source\":\"github\",\"repo\":\"${REPO}\",\"entity_type\":\"pr\",\"number\":${NUMBER},\"author\":\"${AUTHOR}\",\"state\":\"${STATE}\"}" \
+                  $TEMPORAL_FLAG
+          fi
+      done
+      ```
+
+      ## Shell Script: Extract Releases
+
+      ```bash
+      #!/bin/bash
+      set -euo pipefail
+
+      REPO=$(gh repo view --json nameWithOwner -q '.nameWithOwner')
+      REPO_NAME=$(echo "$REPO" | cut -d'/' -f2 | tr '-' '_' | tr '[:upper:]' '[:lower:]')
+      TREE="${REPO_NAME}.github.releases"
+      LIMIT=${MAX_ITEMS:-100}
+
+      gh release list --limit "$LIMIT" --json \
+          tagName,name,body,author,createdAt,isDraft,isPrerelease \
+          | jq -c '.[]' | while read -r item; do
+
+          TAG=$(echo "$item" | jq -r '.tagName')
+          NAME=$(echo "$item" | jq -r '.name // .tagName')
+          BODY=$(echo "$item" | jq -r '.body // ""')
+          AUTHOR=$(echo "$item" | jq -r '.author.login')
+          CREATED=$(echo "$item" | jq -r '.createdAt')
+          IS_DRAFT=$(echo "$item" | jq -r '.isDraft')
+          IS_PRERELEASE=$(echo "$item" | jq -r '.isPrerelease')
+
+          # Skip drafts and empty releases
+          [ "$IS_DRAFT" = "true" ] && continue
+          [ -z "$BODY" ] && continue
+
+          CONTENT="## Release ${TAG}: ${NAME}\n\n"
+          CONTENT+="Repo: ${REPO}\nAuthor: @${AUTHOR}\n"
+          [ "$IS_PRERELEASE" = "true" ] && CONTENT+="Pre-release: yes\n"
+          CONTENT+="Created: ${CREATED}\n"
+          CONTENT+="\n${BODY}"
+
+          META="{\"source\":\"github\",\"repo\":\"${REPO}\",\"entity_type\":\"release\",\"tag\":\"${TAG}\",\"author\":\"${AUTHOR}\"}"
+          [ "$IS_PRERELEASE" = "true" ] && META=$(echo "$META" | jq '. + {prerelease: true}')
+
+          EXISTING=$(me search --meta "{\"source\":\"github\",\"repo\":\"${REPO}\",\"entity_type\":\"release\",\"tag\":\"${TAG}\"}" --limit 1 --format json 2>/dev/null || echo "")
+
+          if [ -n "$EXISTING" ] && [ "$EXISTING" != "[]" ]; then
+              EXISTING_ID=$(echo "$EXISTING" | jq -r '.[0].id')
+              me update "$EXISTING_ID" --content "$(echo -e "$CONTENT")" --meta "$META"
+          else
+              me create --tree "$TREE" --content "$(echo -e "$CONTENT")" \
+                  --meta "$META" --temporal-start "$CREATED"
+          fi
+      done
+      ```
+
+  - id: "019b0006-0004-7000-8000-000000000004"
+    tree: "gh_cli"
+    meta:
+      type: "reference"
+      topic: "github-content-gh-cli"
+    content: |
+      # gh CLI Reference — Commands and JSON Fields
+
+      Exact `gh` commands, JSON output fields, pagination, rate limiting, and advanced queries for GitHub content extraction.
+
+      ## Authentication Check
+
+      ```bash
+      gh auth status
+      # Must show "Logged in to github.com" — fails if not authenticated
+      ```
+
+      ## Repository Detection
+
+      ```bash
+      # Full owner/repo
+      gh repo view --json nameWithOwner -q '.nameWithOwner'
+      # → "timescale/pg_textsearch"
+
+      # Repo name only
+      gh repo view --json name -q '.name'
+      # → "pg_textsearch"
+
+      # Explicit repo (not in a git directory)
+      gh repo view owner/repo --json nameWithOwner -q '.nameWithOwner'
+      ```
+
+      ## Issues
+
+      **List issues:**
+      ```bash
+      gh issue list --state all --limit 100 --json \
+          number,title,body,author,state,labels,createdAt,closedAt,comments
+      ```
+
+      **JSON fields:**
+      | Field | Type | Notes |
+      |-------|------|-------|
+      | `number` | int | Issue number |
+      | `title` | string | |
+      | `body` | string | Markdown body (may be null) |
+      | `author` | object | `.login` for username |
+      | `state` | string | `"OPEN"` or `"CLOSED"` — normalize to lowercase |
+      | `labels` | array | Each has `.name` |
+      | `createdAt` | string | ISO 8601 |
+      | `closedAt` | string | ISO 8601 or null |
+      | `comments` | array | Each has `.author.login`, `.body`, `.createdAt` |
+
+      **Filter by label:**
+      ```bash
+      gh issue list --label "bug" --state all --limit 100 --json ...
+      ```
+
+      **Search with date filter:**
+      ```bash
+      gh issue list --search "updated:>=2025-01-01" --state all --limit 100 --json ...
+      ```
+
+      ## Pull Requests
+
+      **List PRs:**
+      ```bash
+      gh pr list --state all --limit 100 --json \
+          number,title,body,author,state,labels,createdAt,closedAt,mergedAt,comments,reviewDecision
+      ```
+
+      **JSON fields:**
+      | Field | Type | Notes |
+      |-------|------|-------|
+      | `number` | int | PR number |
+      | `title` | string | |
+      | `body` | string | Markdown body (may be null) |
+      | `author` | object | `.login` for username |
+      | `state` | string | `"OPEN"`, `"CLOSED"`, or `"MERGED"` — normalize to lowercase |
+      | `labels` | array | Each has `.name` |
+      | `createdAt` | string | ISO 8601 |
+      | `closedAt` | string | ISO 8601 or null |
+      | `mergedAt` | string | ISO 8601 or null |
+      | `comments` | array | Each has `.author.login`, `.body`, `.createdAt` |
+      | `reviewDecision` | string | `"APPROVED"`, `"CHANGES_REQUESTED"`, `"REVIEW_REQUIRED"`, or `""` |
+
+      **Filter by base branch:**
+      ```bash
+      gh pr list --base main --state all --limit 100 --json ...
+      ```
+
+      ## Releases
+
+      **List releases:**
+      ```bash
+      gh release list --limit 100 --json \
+          tagName,name,body,author,createdAt,isDraft,isPrerelease
+      ```
+
+      **JSON fields:**
+      | Field | Type | Notes |
+      |-------|------|-------|
+      | `tagName` | string | e.g., `"v1.2.3"` |
+      | `name` | string | Release title (may equal tagName) |
+      | `body` | string | Release notes markdown |
+      | `author` | object | `.login` for username |
+      | `createdAt` | string | ISO 8601 |
+      | `isDraft` | boolean | Skip if true |
+      | `isPrerelease` | boolean | Store in `meta.prerelease` |
+
+      **View a specific release:**
+      ```bash
+      gh release view v1.2.3 --json tagName,name,body,author,createdAt
+      ```
+
+      ## Pagination
+
+      The `--limit` flag controls the maximum number of results. `gh` handles pagination internally up to the specified limit.
+
+      **For >1000 items** (gh CLI limit), use the GraphQL API:
+      ```bash
+      gh api graphql -f query='
+        query($cursor: String) {
+          repository(owner: "owner", name: "repo") {
+            issues(first: 100, after: $cursor, orderBy: {field: UPDATED_AT, direction: DESC}) {
+              pageInfo { hasNextPage endCursor }
+              nodes {
+                number title body
+                author { login }
+                state
+                labels(first: 10) { nodes { name } }
+                createdAt closedAt
+                comments(first: 5) {
+                  nodes { author { login } body createdAt }
+                }
+              }
+            }
+          }
+        }
+      ' -F cursor="$CURSOR"
+      ```
+
+      Pass `endCursor` as `$CURSOR` for the next page. Loop until `hasNextPage` is `false`.
+
+      ## Rate Limiting
+
+      ```bash
+      # Check current rate limit
+      gh api rate_limit --jq '.rate | "\(.remaining)/\(.limit) (resets \(.reset | todate))"'
+      ```
+
+      - REST API: 5000 requests/hour (authenticated)
+      - GraphQL: 5000 points/hour
+      - `gh issue list --limit 100` = 1 REST request (paginated internally)
+      - For large repos: add 1-second delay between entity types to stay well within limits
+
+      ## Bot Detection
+
+      Common bot patterns to filter out:
+
+      | Pattern | Example |
+      |---------|---------|
+      | Login ends with `[bot]` | `dependabot[bot]`, `renovate[bot]`, `codecov[bot]` |
+      | Login is `dependabot` | Legacy dependabot account |
+      | Login ends with `-bot` | `mergify-bot`, `stale-bot` |
+      | Login is `github-actions` | GitHub Actions bot |
+
+      Filter in jq:
+      ```bash
+      | jq '[.[] | select(.author.login | test("\\[bot\\]$|^dependabot$|-bot$|^github-actions$") | not)]'
+      ```
+
+      ## Advanced: Fetch Issue/PR with Full Comments
+
+      The list commands include comments inline. For issues/PRs with >100 comments, fetch individually:
+
+      ```bash
+      # Get full comment thread for an issue
+      gh api "repos/owner/repo/issues/42/comments" --paginate --jq '.[].body'
+
+      # Get review comments for a PR (inline code comments)
+      gh api "repos/owner/repo/pulls/42/comments" --paginate \
+          --jq '.[] | "\(.user.login): \(.body)"'
+      ```
