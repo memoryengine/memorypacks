@@ -33,6 +33,9 @@ me pack import --dry-run packs/git-history.yaml
 | [pack-authoring](packs/pack-authoring.yaml) | How to write effective memory packs — skill memory structure, reference memory craft, organization, ID/versioning, and quality checklist |
 | [skill-to-pack](packs/skill-to-pack.yaml) | Convert Agent Skills (agentskills.io) into memory engine packs — format reference, conversion procedure, field mapping, and edge cases |
 | [codebase-index](packs/codebase-index.yaml) | Teaches agents to build a structural code index using Tree-sitter and filesystem watching — zero LLM cost, always current |
+| [docs-to-pack](packs/docs-to-pack.yaml) | Convert project documentation (Markdown, MDX, RST, OpenAPI) into memory packs |
+| [git-history](packs/git-history.yaml) | Teaches agents to backfill and incrementally sync git commit history into searchable memories |
+| [github-content](packs/github-content.yaml) | Extract GitHub issues, PRs, and releases into memory engine using the gh CLI |
 
 ## Pack format
 
@@ -83,15 +86,19 @@ Each pack claims a unique UUIDv7 prefix. Declare it in the envelope's `id-prefix
 |--------|------|
 | `019b0001` | pack-authoring |
 | `019b0002` | skill-to-pack |
+| `019b0003` | codebase-index |
+| `019b0004` | docs-to-pack |
+| `019b0005` | git-history |
+| `019b0006` | github-content |
 
 When adding a new pack, choose the next available prefix.
 
 To generate IDs for a new pack:
 
 ```bash
-bun scripts/pack-uuids.ts 019b0003        # 10 IDs (default)
-bun scripts/pack-uuids.ts 019b0003 25     # 25 IDs
-bun scripts/pack-uuids.ts 019b0003 5 3    # 5 IDs starting at sequence 3
+bun scripts/pack-uuids.ts 019b0007        # 10 IDs (default)
+bun scripts/pack-uuids.ts 019b0007 25     # 25 IDs
+bun scripts/pack-uuids.ts 019b0007 5 3    # 5 IDs starting at sequence 3
 ```
 
 ## Upgrading packs
