@@ -36,6 +36,7 @@ me pack import --dry-run packs/git-history.yaml
 | [docs-to-pack](packs/docs-to-pack.yaml) | Convert project documentation (Markdown, MDX, RST, OpenAPI) into memory packs |
 | [git-history](packs/git-history.yaml) | Teaches agents to backfill and incrementally sync git commit history into searchable memories |
 | [github-content](packs/github-content.yaml) | Extract GitHub issues, PRs, and releases into memory engine using the gh CLI |
+| [build-postgres-queue](packs/build_postgres_queue.yaml) | Comprehensive guide for designing and implementing task queues using PostgreSQL |
 
 ## Pack format
 
@@ -90,6 +91,7 @@ Each pack claims a unique UUIDv7 prefix. Declare it in the envelope's `id-prefix
 | `019b0004` | docs-to-pack |
 | `019b0005` | git-history |
 | `019b0006` | github-content |
+| `019b0007` | build-postgres-queue |
 
 When adding a new pack, choose the next available prefix.
 
