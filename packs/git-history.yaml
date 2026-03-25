@@ -1,5 +1,5 @@
 name: git_history
-version: "0.2.0"
+version: "0.2.1"
 description: "Teaches agents to backfill and incrementally sync git commit history into searchable memories"
 id-prefix: "019b0005"
 format: 1
@@ -47,12 +47,14 @@ memories:
          - Verify the SHA still exists: `git cat-file -t <sha>` — if it succeeds, use `<sha>..HEAD` as the git log range.
          - If the SHA is missing (force-push, rebase), fall back to date-based filtering using `last_date` as `--after`, and perform **bulk dedup** (see step 6).
 
-      4. **Run git log** with NUL delimiter (safe against any commit message content):
-         - Full backfill: `git log --format='%H%x00%ae%x00%aI%x00%s' --reverse`
-         - Incremental: `git log --format='%H%x00%ae%x00%aI%x00%s' --reverse <last_sha>..HEAD`
+      4. **Run git log** with tab delimiter (safe and easy to parse in shell):
+         - Full backfill: `git log --format='%H\t%ae\t%aI\t%s' --reverse`
+         - Incremental: `git log --format='%H\t%ae\t%aI\t%s' --reverse <last_sha>..HEAD`
          - With date filter: append `--after=<date>`
 
-      5. **Parse each commit**: split each line on `\0` (NUL) to get SHA, author email, ISO date, subject. For body: `git log -1 --format='%b' <sha>`.
+         Note: NUL delimiters (`%x00`) are theoretically safer but cause issues with shell tools like `grep` and `cut`. Tab delimiters work reliably across all shell environments. For programmatic use (TypeScript/Python), NUL delimiters remain a valid choice.
+
+      5. **Parse each commit**: split each line on tab to get SHA, author email, ISO date, subject. For body: `git log -1 --format='%b' <sha>`.
 
       6. **Dedup (cursor fallback only)** — when the cursor SHA was not found and date-based fallback is used, fetch recent imports in bulk and exclude already-imported SHAs:
          ```
@@ -69,9 +71,41 @@ memories:
 
       8. **Format content** per depth level (see schema memory: `me_memory_get({id: "019b0005-0004-7000-8000-000000000004"})`).
 
-      9. **Batch create memories** via `me_memory_batchCreate()` in batches of 50. Set tree, meta, and temporal fields per the schema conventions.
+      9. **Batch create memories** — the fastest approach is to generate a YAML file and use `me memory import`:
 
-      10. **Upsert sync cursor** after all batches succeed. Create or update the cursor memory with the last processed SHA, date, and running total:
+         **IMPORTANT — YAML format gotchas:**
+         - The file must be a **flat YAML list** (starts with `- content: |`). Do NOT wrap in a `memories:` key — that format is for packs only.
+         - The `temporal` field must be a **plain ISO string** (e.g., `temporal: "2026-02-15T10:30:00Z"`), NOT an object like `{start: "..."}`. The object format is for the MCP API only.
+         - File change lines starting with `- ` inside a YAML block scalar (`|`) will break YAML parsing if not indented deeper than the block indicator. Ensure all content lines are indented at least 4 spaces (2 beyond the `content: |` key).
+
+         ```yaml
+         - content: |
+             # Add rate limiting middleware
+
+             **Commit**: a1b2c3d
+             **Author**: dev@example.com
+             **Date**: 2026-02-15T10:30:00Z
+
+             ## Files Changed
+             - A src/middleware/rate-limit.ts
+             - M src/server/routes.ts
+           tree: "my_api.git_history"
+           meta:
+             source: "git"
+             repo: "my_api"
+             commit: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
+             author: "dev@example.com"
+             branch: "refs/heads/main"
+           temporal: "2026-02-15T10:30:00Z"
+         ```
+
+         Then import: `me memory import /tmp/git-history.yaml`
+
+         Always validate first with `--dry-run`: `me memory import --dry-run /tmp/git-history.yaml`
+
+         For MCP-only environments (no CLI), use `me_memory_create()` per commit — but this is much slower for large repos.
+
+      10. **Upsert sync cursor** after import succeeds. Create or update the cursor memory with the last processed SHA, date, and running total:
           ```
           me_memory_update({id: cursor.id, content: "Sync cursor for ...", meta: {
             source: "git", repo: "<name>", type: "sync_cursor",
@@ -79,23 +113,6 @@ memories:
           }})
           ```
           If no cursor existed, create one in the same tree path.
-
-      ## Example Output
-
-      ```
-      me_memory_batchCreate({memories: [{
-        content: "# Add rate limiting middleware\n\n**Commit**: a1b2c3d\n**Author**: dev@example.com\n**Date**: 2026-02-15T10:30:00Z\n\nImplement token-bucket rate limiter for all API endpoints.\n\n## Files Changed\n- A src/middleware/rate-limit.ts\n- M src/server/routes.ts",
-        tree: "my_api.git_history",
-        meta: {
-          source: "git",
-          repo: "my_api",
-          commit: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
-          author: "dev@example.com",
-          branch: "refs/heads/main"
-        },
-        temporal: {start: "2026-02-15T10:30:00Z"}
-      }]})
-      ```
 
       ## Scope Control
 
@@ -105,7 +122,7 @@ memories:
 
       ## See Also
       - TypeScript skeleton — `me_memory_get({id: "019b0005-0002-7000-8000-000000000002"})`
-      - Pseudocode & CLI fallback — `me_memory_get({id: "019b0005-0003-7000-8000-000000000003"})`
+      - Shell script & pseudocode — `me_memory_get({id: "019b0005-0003-7000-8000-000000000003"})`
       - Memory schema conventions — `me_memory_get({id: "019b0005-0004-7000-8000-000000000004"})`
 
   - id: "019b0005-0002-7000-8000-000000000002"
@@ -263,7 +280,7 @@ memories:
       ## Key Design Decisions
 
       - **`execFileSync` over `Bun.$`**: works in bun, node (`npx tsx`), and deno — no runtime lock-in
-      - **NUL delimiter (`%x00`)**: pipe `|` breaks on commit messages containing `|`; NUL is safe
+      - **NUL delimiter (`%x00`)**: pipe `|` breaks on commit messages containing `|`; NUL is safe in programmatic contexts (but use tab `\t` in shell scripts — see pseudocode memory)
       - **Sync cursor**: a dedicated memory with `meta.type: "sync_cursor"` tracks progress across runs, replacing per-commit dedup searches
       - **Bulk dedup**: only needed when cursor SHA is missing (force-push); one search replaces N+1 queries
       - **`batchCreate` in batches of 50**: single RPC call per batch, much faster than per-commit `create`
@@ -274,7 +291,7 @@ memories:
 
       ## See Also
       - Extraction skill — `me_memory_get({id: "019b0005-0001-7000-8000-000000000001"})`
-      - Pseudocode & CLI fallback — `me_memory_get({id: "019b0005-0003-7000-8000-000000000003"})`
+      - Shell script & pseudocode — `me_memory_get({id: "019b0005-0003-7000-8000-000000000003"})`
       - Memory schema conventions — `me_memory_get({id: "019b0005-0004-7000-8000-000000000004"})`
 
   - id: "019b0005-0003-7000-8000-000000000003"
@@ -283,9 +300,125 @@ memories:
       type: "reference"
       topic: "git-history-pseudocode"
     content: |
-      # Pseudocode & CLI Fallback — Git History Extraction
+      # Shell Script & Pseudocode — Git History Extraction
 
-      Language-agnostic algorithm and equivalent `me` CLI commands for extracting git history into memory engine. Use this when building in Python, Go, shell script, or any language without a TypeScript runtime.
+      Language-agnostic algorithm and a working shell script for extracting git history into memory engine. The recommended approach generates a YAML file and uses `me memory import` for maximum speed.
+
+      ## Recommended: Shell Script with YAML Batch Import
+
+      This is the fastest approach — generates a YAML file of all commits, then imports in one shot.
+
+      ```bash
+      #!/bin/bash
+      set -euo pipefail
+
+      REPO="my_api"       # ltree-safe: lowercase, underscores only
+      TREE="${REPO}.git_history"
+      BRANCH="refs/heads/main"
+      OUTFILE="/tmp/git-history-${REPO}.yaml"
+
+      # --- Find sync cursor ---
+      CURSOR_JSON=$(me memory search --meta "{\"source\":\"git\",\"repo\":\"${REPO}\",\"type\":\"sync_cursor\"}" --limit 1 --json 2>/dev/null || echo "[]")
+      CURSOR_ID=$(echo "$CURSOR_JSON" | jq -r '.[0].id // empty')
+      LAST_SHA=$(echo "$CURSOR_JSON" | jq -r '.[0].meta.last_commit // empty')
+      PREV_TOTAL=$(echo "$CURSOR_JSON" | jq -r '.[0].meta.total_imported // 0')
+
+      # --- Determine git log range ---
+      RANGE_ARGS=""
+      if [ -n "$LAST_SHA" ]; then
+        if git cat-file -t "$LAST_SHA" &>/dev/null; then
+          RANGE_ARGS="${LAST_SHA}..HEAD"
+        fi
+      fi
+
+      # --- Generate YAML file ---
+      # IMPORTANT: File must be a flat YAML list (no "memories:" wrapper)
+      # IMPORTANT: temporal is a plain ISO string, NOT {start: "..."}
+      # IMPORTANT: Content lines must be indented 4+ spaces to avoid YAML parsing
+      #            issues with lines starting with "- " (file change lists)
+
+      > "$OUTFILE"
+
+      git log --format='%H	%ae	%aI	%s' --reverse $RANGE_ARGS | while IFS=$'\t' read -r SHA AUTHOR DATE SUBJECT; do
+        # Skip merge commits
+        if echo "$SUBJECT" | grep -qE '^Merge (branch|pull request|remote-tracking) '; then
+          continue
+        fi
+
+        SHORT="${SHA:0:7}"
+        BODY=$(git log -1 --format='%b' "$SHA" | head -20)
+        RAW_FILES=$(git diff-tree --no-commit-id --name-status -r "$SHA" 2>/dev/null || true)
+
+        {
+          echo "- content: |"
+          echo "    # ${SUBJECT}"
+          echo ""
+          echo "    **Commit**: ${SHORT}"
+          echo "    **Author**: ${AUTHOR}"
+          echo "    **Date**: ${DATE}"
+
+          if [ -n "$BODY" ]; then
+            echo ""
+            echo "$BODY" | sed 's/^/    /'
+          fi
+
+          if [ -n "$RAW_FILES" ]; then
+            echo ""
+            echo "    ## Files Changed"
+            echo "$RAW_FILES" | while IFS= read -r fline; do
+              echo "    - ${fline}"
+            done
+          fi
+
+          echo "  tree: \"${TREE}\""
+          echo "  meta:"
+          echo "    source: \"git\""
+          echo "    repo: \"${REPO}\""
+          echo "    commit: \"${SHA}\""
+          echo "    author: \"${AUTHOR}\""
+          echo "    branch: \"${BRANCH}\""
+          echo "  temporal: \"${DATE}\""
+        } >> "$OUTFILE"
+      done
+
+      # --- Validate before importing ---
+      echo "Validating..."
+      me memory import --dry-run "$OUTFILE"
+
+      # --- Import ---
+      echo "Importing..."
+      me memory import "$OUTFILE"
+
+      # --- Upsert sync cursor ---
+      LAST_IMPORTED_SHA=$(git log -1 --format='%H' $RANGE_ARGS)
+      LAST_IMPORTED_DATE=$(git log -1 --format='%aI' $RANGE_ARGS)
+      # Note: variables set inside a piped while loop are lost (subshell).
+      # Use grep to count entries in the generated file instead.
+      ACTUAL_COUNT=$(grep -c '^- content:' "$OUTFILE")
+      NEW_TOTAL=$((PREV_TOTAL + ACTUAL_COUNT))
+
+      CURSOR_CONTENT="Sync cursor for ${REPO}. Last: ${LAST_IMPORTED_SHA:0:7} (${LAST_IMPORTED_DATE}). Total: ${NEW_TOTAL} commits."
+      CURSOR_META="{\"source\":\"git\",\"repo\":\"${REPO}\",\"type\":\"sync_cursor\",\"last_commit\":\"${LAST_IMPORTED_SHA}\",\"last_date\":\"${LAST_IMPORTED_DATE}\",\"total_imported\":${NEW_TOTAL}}"
+
+      if [ -n "$CURSOR_ID" ]; then
+        me memory update --id "$CURSOR_ID" --content "$CURSOR_CONTENT" --meta "$CURSOR_META"
+      else
+        me memory create --content "$CURSOR_CONTENT" --tree "$TREE" --meta "$CURSOR_META"
+      fi
+
+      echo "Done: ${ACTUAL_COUNT} memories imported"
+      ```
+
+      ## Common YAML Pitfalls
+
+      These are real errors encountered when generating YAML for `me memory import`:
+
+      | Problem | Cause | Fix |
+      |---------|-------|-----|
+      | `Missing required field 'content'` | File wrapped in `memories:` key | Use flat list: file starts with `- content:` |
+      | `Invalid temporal: Invalid input` | Temporal is `{start: "..."}` object | Use plain string: `temporal: "2026-02-15T10:30:00Z"` |
+      | `A block sequence may not be used as an implicit map key` | `- M src/file.ts` in content parsed as YAML list | Indent all content lines 4+ spaces under `content: \|` |
+      | Count shows 0 after loop | Variable incremented inside piped `while` (subshell) | Use `grep -c '^- content:' file` to count entries |
 
       ## Algorithm Pseudocode
 
@@ -298,24 +431,19 @@ memories:
           cursor = me.memory.search(meta={source: "git", repo: repo, type: "sync_cursor"}, limit=1)
           range = null
           previous_total = 0
-          since_date = null
 
           if cursor exists:
               last_sha = cursor.meta.last_commit
-              last_date = cursor.meta.last_date
               previous_total = cursor.meta.total_imported
-
-              # Verify SHA still exists in repo
               if git_cat_file_exists(last_sha):
                   range = last_sha + "..HEAD"
               else:
-                  # Force-push / rebase — fall back to date filtering
-                  since_date = last_date
+                  since_date = cursor.meta.last_date  # fallback
 
-          # Step 2: Fetch commits (NUL-delimited format)
-          commits = git_log(format="%H%x00%ae%x00%aI%x00%s", reverse=true, range=range, after=since_date, max=config.max)
+          # Step 2: Fetch commits (tab-delimited for shell, NUL for programmatic)
+          commits = git_log(format="%H\t%ae\t%aI\t%s", reverse=true, range=range)
 
-          # Step 3: Filter ignored patterns
+          # Step 3: Filter merge commits
           commits = [c for c in commits if not matches_ignore_pattern(c.subject)]
 
           # Step 4: Bulk dedup (only when cursor SHA was missing)
@@ -324,151 +452,15 @@ memories:
               existing_shas = set(r.meta.commit for r in recent)
               commits = [c for c in commits if c.sha not in existing_shas]
 
-          # Step 5: Batch create memories
-          for batch in chunks(commits, 50):
-              memories = []
-              for commit in batch:
-                  content = format_commit(commit, config.depth)
-                  memories.append({
-                      content: content,
-                      tree: tree,
-                      meta: {source: "git", repo: repo, commit: commit.sha, author: commit.author, branch: commit.branch},
-                      temporal: {start: commit.date}
-                  })
-              me.memory.batchCreate(memories)
+          # Step 5: Generate YAML and import via CLI (fastest)
+          write_yaml_file(commits, tree, repo)  # flat list, plain string temporal
+          validate: me_cli("memory import --dry-run /tmp/git-history.yaml")
+          import:   me_cli("memory import /tmp/git-history.yaml")
 
           # Step 6: Upsert sync cursor
-          if any commits were created:
-              last = commits[-1]
-              cursor_meta = {source: "git", repo: repo, type: "sync_cursor",
-                            last_commit: last.sha, last_date: last.date,
-                            total_imported: previous_total + len(created)}
-              if cursor exists:
-                  me.memory.update(id=cursor.id, content="Sync cursor for ...", meta=cursor_meta)
-              else:
-                  me.memory.create(content="Sync cursor for ...", tree=tree, meta=cursor_meta)
+          if any commits created:
+              upsert_cursor(cursor, repo, tree, last_sha, last_date, total)
       ```
-
-      ## Equivalent `me` CLI Commands
-
-      ### Find Sync Cursor
-
-      ```bash
-      me memory search \
-        --meta '{"source": "git", "repo": "my_api", "type": "sync_cursor"}' \
-        --limit 1
-      ```
-
-      Parse JSON output: `meta.last_commit`, `meta.last_date`, `meta.total_imported`.
-
-      ### Verify Cursor SHA Exists
-
-      ```bash
-      git cat-file -t "$LAST_SHA" 2>/dev/null && echo "exists" || echo "missing"
-      ```
-
-      ### Create a Memory
-
-      ```bash
-      me memory create \
-        --content "$(cat <<'CONTENT'
-      # Add rate limiting middleware
-
-      **Commit**: a1b2c3d
-      **Author**: dev@example.com
-      **Date**: 2026-02-15T10:30:00Z
-
-      ## Files Changed
-      - A src/middleware/rate-limit.ts
-      - M src/server/routes.ts
-      CONTENT
-      )" \
-        --tree "my_api.git_history" \
-        --meta '{"source": "git", "repo": "my_api", "commit": "a1b2c3d4...", "author": "dev@example.com", "branch": "refs/heads/main"}' \
-        --temporal '{"start": "2026-02-15T10:30:00Z"}'
-      ```
-
-      ### Shell Script Loop
-
-      ```bash
-      #!/bin/bash
-      set -euo pipefail
-      REPO="my_api"
-      TREE="${REPO}.git_history"
-
-      # Find sync cursor
-      CURSOR_JSON=$(me memory search --meta "{\"source\":\"git\",\"repo\":\"${REPO}\",\"type\":\"sync_cursor\"}" --limit 1)
-      CURSOR_ID=$(echo "$CURSOR_JSON" | jq -r '.[0].id // empty')
-      LAST_SHA=$(echo "$CURSOR_JSON" | jq -r '.[0].meta.last_commit // empty')
-      LAST_DATE=$(echo "$CURSOR_JSON" | jq -r '.[0].meta.last_date // empty')
-      PREV_TOTAL=$(echo "$CURSOR_JSON" | jq -r '.[0].meta.total_imported // 0')
-
-      # Determine range
-      RANGE_ARGS=""
-      if [ -n "$LAST_SHA" ]; then
-        if git cat-file -t "$LAST_SHA" &>/dev/null; then
-          RANGE_ARGS="${LAST_SHA}..HEAD"
-        elif [ -n "$LAST_DATE" ]; then
-          RANGE_ARGS="--after=${LAST_DATE}"
-        fi
-      fi
-
-      # Fetch commits with NUL delimiter, process line by line
-      CREATED=0
-      LAST_PROCESSED_SHA=""
-      LAST_PROCESSED_DATE=""
-
-      git log --format="%H%x00%ae%x00%aI%x00%s" --reverse $RANGE_ARGS | while IFS= read -r LINE; do
-        SHA=$(echo "$LINE" | cut -d$'\0' -f1)
-        AUTHOR=$(echo "$LINE" | cut -d$'\0' -f2)
-        DATE=$(echo "$LINE" | cut -d$'\0' -f3)
-        SUBJECT=$(echo "$LINE" | cut -d$'\0' -f4-)
-
-        # Skip merge commits
-        echo "$SUBJECT" | grep -qE '^Merge (branch|pull request|remote-tracking)' && continue
-
-        # Get changed files
-        FILES=$(git diff-tree --no-commit-id --name-status -r "$SHA" | sed 's/^/- /')
-
-        CONTENT="# ${SUBJECT}
-
-      **Commit**: ${SHA:0:7}
-      **Author**: ${AUTHOR}
-      **Date**: ${DATE}
-
-      ## Files Changed
-      ${FILES}"
-
-        me memory create \
-          --content "$CONTENT" \
-          --tree "$TREE" \
-          --meta "{\"source\":\"git\",\"repo\":\"${REPO}\",\"commit\":\"${SHA}\",\"author\":\"${AUTHOR}\",\"branch\":\"refs/heads/main\"}" \
-          --temporal "{\"start\":\"${DATE}\"}"
-
-        CREATED=$((CREATED + 1))
-        LAST_PROCESSED_SHA="$SHA"
-        LAST_PROCESSED_DATE="$DATE"
-      done
-
-      # Upsert sync cursor
-      if [ "$CREATED" -gt 0 ]; then
-        TOTAL=$((PREV_TOTAL + CREATED))
-        CURSOR_CONTENT="Sync cursor for ${REPO}. Last: ${LAST_PROCESSED_SHA:0:7} (${LAST_PROCESSED_DATE}). Total: ${TOTAL} commits."
-        CURSOR_META="{\"source\":\"git\",\"repo\":\"${REPO}\",\"type\":\"sync_cursor\",\"last_commit\":\"${LAST_PROCESSED_SHA}\",\"last_date\":\"${LAST_PROCESSED_DATE}\",\"total_imported\":${TOTAL}}"
-
-        if [ -n "$CURSOR_ID" ]; then
-          me memory update --id "$CURSOR_ID" --content "$CURSOR_CONTENT" --meta "$CURSOR_META"
-        else
-          me memory create --content "$CURSOR_CONTENT" --tree "$TREE" --meta "$CURSOR_META"
-        fi
-      fi
-
-      echo "Done: ${CREATED} created"
-      ```
-
-      ## Python Equivalent
-
-      Use `subprocess.run(["git", ...])` for git commands (same `execFileSync` pattern) and `requests` or the me Python client for memory operations. The algorithm is identical — only the syntax changes.
 
       ## See Also
       - Extraction skill — `me_memory_get({id: "019b0005-0001-7000-8000-000000000001"})`
@@ -556,11 +548,23 @@ memories:
 
       ## Temporal
 
+      The temporal format differs between the MCP API and CLI import:
+
+      ### MCP API (`me_memory_create` / `me_memory_update`)
+      Uses an object with start/end fields:
       ```json
-      {"start": "<commit_author_date_iso>"}
+      {"start": "2026-02-15T10:30:00Z", "end": null}
       ```
 
-      Point-in-time only (no `end` date). Uses the commit's author date in ISO 8601 format. This enables temporal range queries like "what changed last week."
+      ### CLI import (`me memory import`)
+      Uses a **plain ISO string**:
+      ```yaml
+      temporal: "2026-02-15T10:30:00Z"
+      ```
+
+      **IMPORTANT:** These formats are NOT interchangeable. Using the object format `{start: "..."}` in a YAML import file will cause `Invalid temporal: Invalid input` errors.
+
+      Point-in-time only (no end date). Uses the commit's author date in ISO 8601 format. This enables temporal range queries like "what changed last week."
 
       ## Content Template — Depth Levels
 
@@ -595,6 +599,35 @@ memories:
 
       File status prefixes: `A` (added), `M` (modified), `D` (deleted), `R` (renamed).
 
+      **YAML block scalar warning:** Lines starting with `- ` (like the file list above) will be misinterpreted as YAML list items if not properly indented inside a `content: |` block. Ensure all content lines are indented at least 4 spaces (2 levels beyond the list item's `content` key).
+
+      ## YAML Import Format
+
+      The `me memory import` CLI expects a **flat YAML list** — no envelope, no `memories:` wrapper:
+
+      ```yaml
+      - content: |
+          # Add rate limiting middleware
+
+          **Commit**: a1b2c3d
+          **Author**: dev@example.com
+          **Date**: 2026-02-15T10:30:00Z
+
+          ## Files Changed
+          - A src/middleware/rate-limit.ts
+          - M src/server/routes.ts
+        tree: "my_api.git_history"
+        meta:
+          source: "git"
+          repo: "my_api"
+          commit: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
+          author: "dev@example.com"
+          branch: "refs/heads/main"
+        temporal: "2026-02-15T10:30:00Z"
+      ```
+
+      Always validate with `me memory import --dry-run <file>` before importing.
+
       ## Search Patterns
 
       Common queries agents run against git history memories:
@@ -615,7 +648,7 @@ memories:
       # Temporal range — what changed last week
       me_memory_search({
         meta: {source: "git", repo: "my_api"},
-        temporal: {overlaps: ["2026-02-24T00:00:00Z", "2026-03-03T00:00:00Z"]}
+        temporal: {overlaps: {start: "2026-02-24T00:00:00Z", end: "2026-03-03T00:00:00Z"}}
       })
 
       # Find sync cursor for a repo
@@ -625,4 +658,4 @@ memories:
       ## See Also
       - Extraction skill — `me_memory_get({id: "019b0005-0001-7000-8000-000000000001"})`
       - TypeScript skeleton — `me_memory_get({id: "019b0005-0002-7000-8000-000000000002"})`
-      - Pseudocode & CLI fallback — `me_memory_get({id: "019b0005-0003-7000-8000-000000000003"})`
+      - Shell script & pseudocode — `me_memory_get({id: "019b0005-0003-7000-8000-000000000003"})`
